@@ -855,7 +855,7 @@
 
     <script>
         // Глобальные переменные
-        const socket = io('http://localhost:5000');
+        const socket = io();  // Без URL - будет использовать текущий домен
         let currentUser = '';
         let currentRoom = 'general';
         let typingTimeout;
@@ -1437,3 +1437,4 @@
     </script>
 </body>
 </html>
+
