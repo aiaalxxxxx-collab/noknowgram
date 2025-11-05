@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чат с видеозвонками</title>
+    <title>SecureChat - Регистрация</title>
     <style>
         * {
             margin: 0;
@@ -12,626 +12,513 @@
         }
 
         :root {
-            --bg-primary: #1e1e1e;
-            --bg-secondary: #2d2d2d;
-            --bg-tertiary: #3d3d3d;
-            --border-color: #555;
-            --accent-color: #4a76a8;
+            --bg-primary: #0f1419;
+            --bg-secondary: #1e2328;
+            --bg-tertiary: #2d3238;
+            --accent-primary: #00d4aa;
+            --accent-secondary: #0099ff;
             --text-primary: #ffffff;
-            --text-secondary: #cccccc;
-            --success-color: #2a4d2a;
-            --file-color: #3a3a5c;
+            --text-secondary: #8899a6;
+            --danger: #ff4444;
+            --success: #00c851;
+            --border-radius: 12px;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-primary);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f2e 100%);
             color: var(--text-primary);
-            height: 100vh;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 440px;
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-header {
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .auth-logo {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .auth-title {
+            font-size: 1.8em;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .auth-subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1em;
+        }
+
+        .auth-form {
+            padding: 40px 30px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: var(--bg-secondary);
+        }
+
+        .form-input.error {
+            border-color: var(--danger);
+        }
+
+        .password-strength {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            margin-top: 8px;
             overflow: hidden;
         }
 
-        .app-container {
-            display: flex;
-            height: 100vh;
-            position: relative;
+        .strength-bar {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 2px;
         }
 
-        /* Сайдбар с контактами */
-        .sidebar {
-            width: 300px;
-            background-color: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
+        .strength-weak { background: var(--danger); width: 33%; }
+        .strength-medium { background: #ffbb33; width: 66%; }
+        .strength-strong { background: var(--success); width: 100%; }
+
+        .error-message {
+            color: var(--danger);
+            font-size: 0.85em;
+            margin-top: 6px;
+            display: none;
         }
 
-        .sidebar-header {
-            padding: 20px;
-            background-color: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .user-profile {
+        .terms-group {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 12px;
+            margin-bottom: 24px;
         }
 
-        .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
+        .checkbox {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            accent-color: var(--accent-primary);
         }
 
-        .contacts {
-            flex: 1;
-            overflow-y: auto;
-            padding: 10px 0;
-        }
-
-        .contact {
-            padding: 15px 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .contact:hover {
-            background-color: var(--bg-tertiary);
-        }
-
-        .contact.active {
-            background-color: var(--accent-color);
-        }
-
-        /* Основная область чата */
-        .chat-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-        }
-
-        .chat-header {
-            padding: 15px 20px;
-            background-color: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: between;
-            align-items: center;
-        }
-
-        .chat-info {
-            flex: 1;
-        }
-
-        .call-controls {
-            display: flex;
-            gap: 10px;
-        }
-
-        .call-btn {
-            padding: 8px 16px;
-            background-color: var(--accent-color);
-            border: none;
-            border-radius: 6px;
-            color: white;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .call-btn:hover {
-            background-color: #3a6590;
-        }
-
-        .call-btn.end-call {
-            background-color: #d9534f;
-        }
-
-        .call-btn.end-call:hover {
-            background-color: #c9302c;
-        }
-
-        .messages-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            background-color: var(--bg-primary);
-        }
-
-        .system-message {
-            text-align: center;
+        .terms-text {
+            font-size: 0.9em;
             color: var(--text-secondary);
-            font-style: italic;
-            padding: 10px;
-            background-color: var(--success-color);
-            border-radius: 8px;
-            margin: 0 auto;
-            max-width: 80%;
-        }
-
-        .message {
-            background-color: var(--bg-secondary);
-            padding: 12px 16px;
-            border-radius: 12px;
-            max-width: 70%;
-            word-wrap: break-word;
-        }
-
-        .message.own {
-            background-color: var(--accent-color);
-            align-self: flex-end;
-        }
-
-        .message-header {
-            display: flex;
-            justify-content: between;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-
-        .sender-name {
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .message-time {
-            font-size: 0.8em;
-            color: var(--text-secondary);
-            margin-left: 10px;
-        }
-
-        .file-message {
-            background-color: var(--file-color);
-        }
-
-        .file-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 6px 0;
-        }
-
-        .file-icon {
-            width: 16px;
-            height: 16px;
-            background-color: var(--text-secondary);
-            border-radius: 3px;
-            flex-shrink: 0;
-        }
-
-        /* Область ввода сообщения - ФИКСИРОВАННАЯ */
-        .input-area {
-            padding: 20px;
-            background-color: var(--bg-tertiary);
-            border-top: 1px solid var(--border-color);
-            position: sticky;
-            bottom: 0;
-            z-index: 100;
-        }
-
-        .input-wrapper {
-            display: flex;
-            gap: 12px;
-            align-items: flex-end;
-        }
-
-        .message-input {
-            flex: 1;
-            padding: 12px 16px;
-            background-color: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 24px;
-            color: var(--text-primary);
-            font-size: 14px;
-            resize: none;
-            min-height: 44px;
-            max-height: 120px;
             line-height: 1.4;
         }
 
-        .message-input:focus {
-            outline: none;
-            border-color: var(--accent-color);
+        .terms-text a {
+            color: var(--accent-primary);
+            text-decoration: none;
         }
 
-        .send-btn {
-            padding: 12px 20px;
-            background-color: var(--accent-color);
-            border: none;
-            border-radius: 24px;
-            color: white;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background-color 0.2s;
-            flex-shrink: 0;
+        .terms-text a:hover {
+            text-decoration: underline;
         }
 
-        .send-btn:hover {
-            background-color: #3a6590;
-        }
-
-        .send-btn:disabled {
-            background-color: var(--border-color);
-            cursor: not-allowed;
-        }
-
-        /* Видеозвонок */
-        .video-call {
-            position: fixed;
-            top: 0;
-            left: 0;
+        .auth-button {
             width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
-            display: none;
-            flex-direction: column;
-        }
-
-        .video-call.active {
-            display: flex;
-        }
-
-        .video-container {
-            flex: 1;
-            display: flex;
-            gap: 20px;
-            padding: 20px;
-        }
-
-        .remote-video {
-            flex: 1;
-            background-color: var(--bg-secondary);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
-
-        .local-video {
-            width: 300px;
-            height: 200px;
-            background-color: var(--bg-secondary);
-            border-radius: 8px;
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            border: 2px solid var(--accent-color);
-        }
-
-        .video-placeholder {
-            color: var(--text-secondary);
-            font-size: 1.2em;
-        }
-
-        .call-controls-bottom {
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            background-color: rgba(30, 30, 30, 0.8);
-        }
-
-        .call-control-btn {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
             border: none;
-            background-color: var(--bg-tertiary);
+            border-radius: 8px;
             color: white;
-            font-size: 1.5em;
+            font-size: 1em;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
         }
 
-        .call-control-btn:hover {
-            transform: scale(1.1);
+        .auth-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 212, 170, 0.3);
         }
 
-        .call-control-btn.end-call {
-            background-color: #d9534f;
+        .auth-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
 
-        .call-control-btn.muted {
-            background-color: #f0ad4e;
+        .auth-switch {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-switch a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .auth-switch a:hover {
+            text-decoration: underline;
         }
 
         /* Анимации */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
-        .message {
-            animation: fadeIn 0.3s ease-out;
+        .auth-container {
+            animation: slideUp 0.6s ease-out;
         }
 
-        /* Полоса прокрутки */
-        ::-webkit-scrollbar {
-            width: 6px;
+        /* Адаптивность */
+        @media (max-width: 480px) {
+            .auth-container {
+                margin: 10px;
+            }
+            
+            .auth-header {
+                padding: 30px 20px;
+            }
+            
+            .auth-form {
+                padding: 30px 20px;
+            }
         }
 
-        ::-webkit-scrollbar-track {
-            background: var(--bg-primary);
+        /* Индикаторы валидации */
+        .form-group.valid .form-input {
+            border-color: var(--success);
         }
 
-        ::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 3px;
+        .form-group.invalid .form-input {
+            border-color: var(--danger);
         }
 
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--accent-color);
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Сайдбар -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <div class="user-profile">
-                    <div class="avatar">Я</div>
-                    <div>
-                        <div style="font-weight: 600;">Мой профиль</div>
-                        <div style="font-size: 0.8em; color: var(--text-secondary);">в сети</div>
-                    </div>
-                </div>
-            </div>
-            <div class="contacts">
-                <div class="contact active">
-                    <div class="avatar" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">Р</div>
-                    <div>
-                        <div style="font-weight: 600;">Релей/школ</div>
-                        <div style="font-size: 0.8em; color: var(--text-secondary);">в сети</div>
-                    </div>
-                </div>
-            </div>
+    <div class="auth-container">
+        <div class="auth-header">
+            <div class="auth-logo">🔒</div>
+            <h1 class="auth-title">Создать аккаунт</h1>
+            <p class="auth-subtitle">Присоединяйтесь к SecureChat сегодня</p>
         </div>
 
-        <!-- Основная область чата -->
-        <div class="chat-area">
-            <div class="chat-header">
-                <div class="chat-info">
-                    <div style="font-weight: 600;">Релей/школ</div>
-                    <div style="font-size: 0.8em; color: var(--text-secondary);">в сети</div>
-                </div>
-                <div class="call-controls">
-                    <button class="call-btn" id="voiceCallBtn">
-                        📞 Аудиозвонок
-                    </button>
-                    <button class="call-btn" id="videoCallBtn">
-                        📹 Видеозвонок
-                    </button>
-                </div>
+        <form class="auth-form" id="registrationForm">
+            <div class="form-group">
+                <label class="form-label">Имя пользователя</label>
+                <input type="text" class="form-input" id="username" required>
+                <div class="error-message" id="usernameError">Имя пользователя должно содержать от 3 до 20 символов</div>
             </div>
 
-            <div class="messages-container" id="messagesContainer">
-                <div class="system-message">
-                    Пользователь Релей/школ присоединился к чату
-                </div>
-
-                <div class="message file-message">
-                    <div class="message-header">
-                        <span class="sender-name">Релей/школ</span>
-                        <span class="message-time">12:30</span>
-                    </div>
-                    <div class="file-item">
-                        <div class="file-icon"></div>
-                        <span>channels4_profile.jpg</span>
-                    </div>
-                    <div class="file-item">
-                        <div class="file-icon"></div>
-                        <span>Фамильный_profile.jpg</span>
-                    </div>
-                    <div class="file-item">
-                        <div class="file-icon"></div>
-                        <span>Скачать</span>
-                    </div>
-                </div>
-
-                <div class="message">
-                    <div class="message-header">
-                        <span class="sender-name">Релей/школ</span>
-                        <span class="message-time">12:31</span>
-                    </div>
-                    <div>Троян</div>
-                </div>
+            <div class="form-group">
+                <label class="form-label">Электронная почта</label>
+                <input type="email" class="form-input" id="email" required>
+                <div class="error-message" id="emailError">Введите корректный email адрес</div>
             </div>
 
-            <!-- ФИКСИРОВАННАЯ область ввода -->
-            <div class="input-area">
-                <div class="input-wrapper">
-                    <textarea 
-                        class="message-input" 
-                        id="messageInput" 
-                        placeholder="Введите сообщение..." 
-                        rows="1"
-                    ></textarea>
-                    <button class="send-btn" id="sendBtn">Отправить</button>
+            <div class="form-group">
+                <label class="form-label">Пароль</label>
+                <input type="password" class="form-input" id="password" required>
+                <div class="password-strength">
+                    <div class="strength-bar" id="passwordStrength"></div>
                 </div>
+                <div class="error-message" id="passwordError">Пароль должен содержать минимум 8 символов</div>
             </div>
-        </div>
 
-        <!-- Окно видеозвонка -->
-        <div class="video-call" id="videoCall">
-            <div class="video-container">
-                <div class="remote-video">
-                    <div class="video-placeholder">Видео Релей/школ</div>
-                    <div class="local-video">
-                        <div class="video-placeholder" style="font-size: 0.8em;">Ваше видео</div>
-                    </div>
-                </div>
+            <div class="form-group">
+                <label class="form-label">Подтверждение пароля</label>
+                <input type="password" class="form-input" id="confirmPassword" required>
+                <div class="error-message" id="confirmPasswordError">Пароли не совпадают</div>
             </div>
-            <div class="call-controls-bottom">
-                <button class="call-control-btn" id="muteBtn">🎤</button>
-                <button class="call-control-btn" id="videoToggleBtn">📹</button>
-                <button class="call-control-btn end-call" id="endCallBtn">📞</button>
+
+            <div class="terms-group">
+                <input type="checkbox" class="checkbox" id="terms" required>
+                <label class="terms-text">
+                    Я принимаю <a href="#">условия использования</a> и соглашаюсь с 
+                    <a href="#">политикой конфиденциальности</a>
+                </label>
             </div>
-        </div>
+
+            <button type="submit" class="auth-button" id="submitButton">
+                <span id="buttonText">Создать аккаунт</span>
+                <span class="loading" id="loadingSpinner" style="display: none;"></span>
+            </button>
+
+            <div class="auth-switch">
+                Уже есть аккаунт? <a href="#" id="loginLink">Войти</a>
+            </div>
+        </form>
     </div>
 
     <script>
-        class ChatApplication {
+        class AuthSystem {
             constructor() {
-                this.isCallActive = false;
-                this.isMuted = false;
-                this.isVideoOn = true;
-                this.initializeElements();
+                this.initElements();
                 this.bindEvents();
-                this.autoResizeTextarea();
-                this.scrollToBottom();
             }
 
-            initializeElements() {
-                this.messageInput = document.getElementById('messageInput');
-                this.sendBtn = document.getElementById('sendBtn');
-                this.messagesContainer = document.getElementById('messagesContainer');
-                this.videoCall = document.getElementById('videoCall');
-                this.videoCallBtn = document.getElementById('videoCallBtn');
-                this.voiceCallBtn = document.getElementById('voiceCallBtn');
-                this.endCallBtn = document.getElementById('endCallBtn');
-                this.muteBtn = document.getElementById('muteBtn');
-                this.videoToggleBtn = document.getElementById('videoToggleBtn');
+            initElements() {
+                this.form = document.getElementById('registrationForm');
+                this.username = document.getElementById('username');
+                this.email = document.getElementById('email');
+                this.password = document.getElementById('password');
+                this.confirmPassword = document.getElementById('confirmPassword');
+                this.terms = document.getElementById('terms');
+                this.submitButton = document.getElementById('submitButton');
+                this.buttonText = document.getElementById('buttonText');
+                this.loadingSpinner = document.getElementById('loadingSpinner');
+                
+                // Error elements
+                this.usernameError = document.getElementById('usernameError');
+                this.emailError = document.getElementById('emailError');
+                this.passwordError = document.getElementById('passwordError');
+                this.confirmPasswordError = document.getElementById('confirmPasswordError');
+                
+                // Strength indicator
+                this.passwordStrength = document.getElementById('passwordStrength');
             }
 
             bindEvents() {
-                this.sendBtn.addEventListener('click', () => this.sendMessage());
-                this.messageInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        this.sendMessage();
-                    }
-                });
-
-                this.videoCallBtn.addEventListener('click', () => this.startVideoCall());
-                this.voiceCallBtn.addEventListener('click', () => this.startVoiceCall());
-                this.endCallBtn.addEventListener('click', () => this.endCall());
-                this.muteBtn.addEventListener('click', () => this.toggleMute());
-                this.videoToggleBtn.addEventListener('click', () => this.toggleVideo());
-            }
-
-            autoResizeTextarea() {
-                this.messageInput.addEventListener('input', () => {
-                    this.messageInput.style.height = 'auto';
-                    this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 120) + 'px';
-                });
-            }
-
-            sendMessage() {
-                const message = this.messageInput.value.trim();
-                if (!message) return;
-
-                this.addMessage('Вы', message, true);
-                this.messageInput.value = '';
-                this.messageInput.style.height = 'auto';
-                this.scrollToBottom();
+                this.form.addEventListener('submit', (e) => this.handleSubmit(e));
                 
-                // Авто-ответ (имитация)
+                this.username.addEventListener('input', () => this.validateUsername());
+                this.email.addEventListener('input', () => this.validateEmail());
+                this.password.addEventListener('input', () => {
+                    this.validatePassword();
+                    this.updatePasswordStrength();
+                });
+                this.confirmPassword.addEventListener('input', () => this.validateConfirmPassword());
+                this.terms.addEventListener('change', () => this.validateForm());
+                
+                document.getElementById('loginLink').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.switchToLogin();
+                });
+            }
+
+            validateUsername() {
+                const username = this.username.value.trim();
+                const isValid = username.length >= 3 && username.length <= 20;
+                
+                this.toggleError(this.username, this.usernameError, !isValid);
+                return isValid;
+            }
+
+            validateEmail() {
+                const email = this.email.value.trim();
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const isValid = emailRegex.test(email);
+                
+                this.toggleError(this.email, this.emailError, !isValid);
+                return isValid;
+            }
+
+            validatePassword() {
+                const password = this.password.value;
+                const isValid = password.length >= 8;
+                
+                this.toggleError(this.password, this.passwordError, !isValid);
+                return isValid;
+            }
+
+            validateConfirmPassword() {
+                const password = this.password.value;
+                const confirmPassword = this.confirmPassword.value;
+                const isValid = password === confirmPassword && password.length > 0;
+                
+                this.toggleError(this.confirmPassword, this.confirmPasswordError, !isValid);
+                return isValid;
+            }
+
+            updatePasswordStrength() {
+                const password = this.password.value;
+                let strength = 'weak';
+                
+                if (password.length >= 12) {
+                    strength = 'strong';
+                } else if (password.length >= 8) {
+                    strength = 'medium';
+                }
+                
+                this.passwordStrength.className = 'strength-bar';
+                if (password.length > 0) {
+                    this.passwordStrength.classList.add(`strength-${strength}`);
+                }
+            }
+
+            toggleError(input, errorElement, showError) {
+                const formGroup = input.parentElement;
+                
+                if (showError) {
+                    formGroup.classList.add('invalid');
+                    formGroup.classList.remove('valid');
+                    errorElement.style.display = 'block';
+                } else {
+                    formGroup.classList.add('valid');
+                    formGroup.classList.remove('invalid');
+                    errorElement.style.display = 'none';
+                }
+            }
+
+            validateForm() {
+                const isUsernameValid = this.validateUsername();
+                const isEmailValid = this.validateEmail();
+                const isPasswordValid = this.validatePassword();
+                const isConfirmPasswordValid = this.validateConfirmPassword();
+                const isTermsAccepted = this.terms.checked;
+                
+                const isValid = isUsernameValid && isEmailValid && isPasswordValid && 
+                              isConfirmPasswordValid && isTermsAccepted;
+                
+                this.submitButton.disabled = !isValid;
+                return isValid;
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+                
+                if (!this.validateForm()) return;
+                
+                // Показываем индикатор загрузки
+                this.buttonText.style.display = 'none';
+                this.loadingSpinner.style.display = 'inline-block';
+                this.submitButton.disabled = true;
+                
+                try {
+                    // Имитация запроса к серверу
+                    await this.registerUser({
+                        username: this.username.value.trim(),
+                        email: this.email.value.trim(),
+                        password: this.password.value
+                    });
+                    
+                    // Успешная регистрация
+                    this.showSuccess();
+                    
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    // Скрываем индикатор загрузки
+                    this.buttonText.style.display = 'inline-block';
+                    this.loadingSpinner.style.display = 'none';
+                    this.submitButton.disabled = false;
+                }
+            }
+
+            async registerUser(userData) {
+                // Имитация API запроса
+                return new Promise((resolve, reject) => {
+                    setTimeout(() => {
+                        // Проверка на существующего пользователя (имитация)
+                        const existingUsers = JSON.parse(localStorage.getItem('chatUsers') || '[]');
+                        const userExists = existingUsers.some(user => 
+                            user.username === userData.username || user.email === userData.email
+                        );
+                        
+                        if (userExists) {
+                            reject(new Error('Пользователь с таким именем или email уже существует'));
+                            return;
+                        }
+                        
+                        // Сохраняем пользователя
+                        const newUser = {
+                            id: Date.now().toString(),
+                            ...userData,
+                            createdAt: new Date().toISOString(),
+                            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.username)}&background=00d4aa&color=fff`
+                        };
+                        
+                        existingUsers.push(newUser);
+                        localStorage.setItem('chatUsers', JSON.stringify(existingUsers));
+                        localStorage.setItem('currentUser', JSON.stringify(newUser));
+                        
+                        resolve(newUser);
+                    }, 2000);
+                });
+            }
+
+            showSuccess() {
+                alert('Регистрация успешна! Перенаправляем в чат...');
+                // Перенаправление в чат
                 setTimeout(() => {
-                    this.addMessage('Релей/школ', 'Получил ваше сообщение', false);
+                    window.location.href = 'chat.html';
                 }, 1000);
             }
 
-            addMessage(sender, text, isOwn = false) {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `message ${isOwn ? 'own' : ''}`;
-                
-                const time = new Date().toLocaleTimeString('ru-RU', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                });
-
-                messageDiv.innerHTML = `
-                    <div class="message-header">
-                        <span class="sender-name">${sender}</span>
-                        <span class="message-time">${time}</span>
-                    </div>
-                    <div>${this.escapeHtml(text)}</div>
-                `;
-
-                this.messagesContainer.appendChild(messageDiv);
-                this.scrollToBottom();
+            showError(message) {
+                alert(`Ошибка: ${message}`);
             }
 
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            scrollToBottom() {
-                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-            }
-
-            startVideoCall() {
-                this.isCallActive = true;
-                this.videoCall.classList.add('active');
-                this.addSystemMessage('Видеозвонок начат...');
-            }
-
-            startVoiceCall() {
-                this.isCallActive = true;
-                this.addSystemMessage('Аудиозвонок начат...');
-            }
-
-            endCall() {
-                this.isCallActive = false;
-                this.videoCall.classList.remove('active');
-                this.addSystemMessage('Звонок завершен');
-                this.resetCallControls();
-            }
-
-            toggleMute() {
-                this.isMuted = !this.isMuted;
-                this.muteBtn.classList.toggle('muted', this.isMuted);
-                this.muteBtn.textContent = this.isMuted ? '🎤❌' : '🎤';
-            }
-
-            toggleVideo() {
-                this.isVideoOn = !this.isVideoOn;
-                this.videoToggleBtn.textContent = this.isVideoOn ? '📹' : '📹❌';
-            }
-
-            resetCallControls() {
-                this.isMuted = false;
-                this.isVideoOn = true;
-                this.muteBtn.classList.remove('muted');
-                this.muteBtn.textContent = '🎤';
-                this.videoToggleBtn.textContent = '📹';
-            }
-
-            addSystemMessage(text) {
-                const systemMsg = document.createElement('div');
-                systemMsg.className = 'system-message';
-                systemMsg.textContent = text;
-                this.messagesContainer.appendChild(systemMsg);
-                this.scrollToBottom();
+            switchToLogin() {
+                // Переключение на форму входа
+                window.location.href = 'login.html';
             }
         }
 
-        // Инициализация приложения
+        // Инициализация системы аутентификации
         document.addEventListener('DOMContentLoaded', () => {
-            new ChatApplication();
-        });
-
-        // Предотвращаем любые попытки сдвига интерфейса
-        window.addEventListener('resize', () => {
-            document.getElementById('messageInput').style.height = 'auto';
+            new AuthSystem();
         });
     </script>
 </body>
