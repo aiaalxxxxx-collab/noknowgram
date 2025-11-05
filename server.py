@@ -56,7 +56,7 @@ def verify_user(username, password):
 # Главная страница
 @app.route('/')
 def serve_index():
-    return send_file('noknowgramstrongvariant.html')
+    return send_file('index.html')  # ← ЗАМЕНИЛ НА index.html
 
 # Отдаем статические файлы
 @app.route('/<path:path>')
