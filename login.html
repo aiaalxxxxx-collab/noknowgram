@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureChat - Вход</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f1419;
+            --bg-secondary: #1e2328;
+            --bg-tertiary: #2d3238;
+            --accent-primary: #00d4aa;
+            --accent-secondary: #0099ff;
+            --text-primary: #ffffff;
+            --text-secondary: #8899a6;
+            --danger: #ff4444;
+            --success: #00c851;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f2e 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 440px;
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-header {
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .auth-logo {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .auth-title {
+            font-size: 1.8em;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .auth-subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1em;
+        }
+
+        .auth-form {
+            padding: 40px 30px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: var(--bg-secondary);
+        }
+
+        .form-input.error {
+            border-color: var(--danger);
+        }
+
+        .error-message {
+            color: var(--danger);
+            font-size: 0.85em;
+            margin-top: 6px;
+            display: none;
+        }
+
+        .auth-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .auth-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 212, 170, 0.3);
+        }
+
+        .auth-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .auth-switch {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-switch a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .auth-switch a:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-header">
+            <div class="auth-logo">🔒</div>
+            <h1 class="auth-title">Войти в аккаунт</h1>
+            <p class="auth-subtitle">С возвращением в SecureChat</p>
+        </div>
+
+        <form class="auth-form" id="loginForm">
+            <div class="form-group">
+                <label class="form-label">Имя пользователя или Email</label>
+                <input type="text" class="form-input" id="login" required>
+                <div class="error-message" id="loginError">Неверное имя пользователя или email</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Пароль</label>
+                <input type="password" class="form-input" id="password" required>
+                <div class="error-message" id="passwordError">Неверный пароль</div>
+            </div>
+
+            <button type="submit" class="auth-button" id="submitButton">
+                <span id="buttonText">Войти</span>
+                <span class="loading" id="loadingSpinner" style="display: none;"></span>
+            </button>
+
+            <div class="auth-switch">
+                Нет аккаунта? <a href="register.html" id="registerLink">Зарегистрироваться</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        class LoginSystem {
+            constructor() {
+                this.initElements();
+                this.bindEvents();
+            }
+
+            initElements() {
+                this.form = document.getElementById('loginForm');
+                this.login = document.getElementById('login');
+                this.password = document.getElementById('password');
+                this.submitButton = document.getElementById('submitButton');
+                this.buttonText = document.getElementById('buttonText');
+                this.loadingSpinner = document.getElementById('loadingSpinner');
+                
+                // Error elements
+                this.loginError = document.getElementById('loginError');
+                this.passwordError = document.getElementById('passwordError');
+            }
+
+            bindEvents() {
+                this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+                
+                this.login.addEventListener('input', () => this.validateLogin());
+                this.password.addEventListener('input', () => this.validatePassword());
+            }
+
+            validateLogin() {
+                const login = this.login.value.trim();
+                const isValid = login.length >= 3;
+                
+                this.toggleError(this.login, this.loginError, !isValid);
+                return isValid;
+            }
+
+            validatePassword() {
+                const password = this.password.value;
+                const isValid = password.length >= 1;
+                
+                this.toggleError(this.password, this.passwordError, !isValid);
+                return isValid;
+            }
+
+            toggleError(input, errorElement, showError) {
+                if (showError) {
+                    input.classList.add('error');
+                    errorElement.style.display = 'block';
+                } else {
+                    input.classList.remove('error');
+                    errorElement.style.display = 'none';
+                }
+            }
+
+            validateForm() {
+                const isLoginValid = this.validateLogin();
+                const isPasswordValid = this.validatePassword();
+                
+                const isValid = isLoginValid && isPasswordValid;
+                this.submitButton.disabled = !isValid;
+                return isValid;
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+                
+                if (!this.validateForm()) return;
+                
+                // Показываем индикатор загрузки
+                this.buttonText.style.display = 'none';
+                this.loadingSpinner.style.display = 'inline-block';
+                this.submitButton.disabled = true;
+                
+                try {
+                    await this.loginUser({
+                        login: this.login.value.trim(),
+                        password: this.password.value
+                    });
+                    
+                    // Успешный вход
+                    this.showSuccess();
+                    
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    // Скрываем индикатор загрузки
+                    this.buttonText.style.display = 'inline-block';
+                    this.loadingSpinner.style.display = 'none';
+                    this.submitButton.disabled = false;
+                }
+            }
+
+            async loginUser(loginData) {
+                return new Promise((resolve, reject) => {
+                    setTimeout(() => {
+                        const existingUsers = JSON.parse(localStorage.getItem('chatUsers') || '[]');
+                        
+                        const user = existingUsers.find(user => 
+                            (user.username === loginData.login || user.email === loginData.login) &&
+                            user.password === loginData.password
+                        );
+                        
+                        if (!user) {
+                            reject(new Error('Неверное имя пользователя или пароль'));
+                            return;
+                        }
+                        
+                        // Сохраняем текущего пользователя
+                        localStorage.setItem('currentUser', JSON.stringify(user));
+                        resolve(user);
+                    }, 1500);
+                });
+            }
+
+            showSuccess() {
+                // Перенаправление в чат
+                setTimeout(() => {
+                    window.location.href = 'chat.html';
+                }, 500);
+            }
+
+            showError(message) {
+                alert(`Ошибка: ${message}`);
+            }
+        }
+
+        // Инициализация системы входа
+        document.addEventListener('DOMContentLoaded', () => {
+            new LoginSystem();
+        });
+    </script>
+</body>
+</html>
