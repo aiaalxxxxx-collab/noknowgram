@@ -44,7 +44,6 @@
             border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            flex-shrink: 0;
         }
 
         .sidebar-header {
@@ -98,7 +97,7 @@
 
         .online-users {
             padding: 15px 20px;
-            border-bottom: 1px solid var(--border-color);
+            flex: 1;
         }
 
         .online-users h4 {
@@ -116,9 +115,10 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 8px;
-            border-radius: 6px;
+            padding: 12px;
+            border-radius: 8px;
             cursor: pointer;
+            transition: all 0.2s;
         }
 
         .online-user:hover {
@@ -130,23 +130,52 @@
         }
 
         .user-avatar {
-            width: 32px;
-            height: 32px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
+            font-size: 1em;
+        }
+
+        .user-info-small {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .user-status-text {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+        }
+
+        .call-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .call-btn-small {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 0.9em;
         }
 
-        .user-status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--accent-primary);
-            margin-left: auto;
+        .call-btn-small:hover {
+            background: var(--accent-primary);
         }
 
         /* Область чата */
@@ -154,7 +183,6 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            min-width: 0;
         }
 
         .chat-header {
@@ -174,6 +202,46 @@
         .chat-status {
             font-size: 0.9em;
             color: var(--text-secondary);
+        }
+
+        .call-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .call-btn {
+            padding: 10px 20px;
+            background-color: var(--accent-primary);
+            border: none;
+            border-radius: 20px;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .call-btn:hover {
+            background-color: #00c49a;
+            transform: translateY(-1px);
+        }
+
+        .call-btn.video {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .call-btn.video:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        .call-btn.end-call {
+            background-color: var(--danger);
+        }
+
+        .call-btn.end-call:hover {
+            background-color: #e03333;
         }
 
         .messages-container {
@@ -205,6 +273,7 @@
             max-width: 70%;
             word-wrap: break-word;
             border: 1px solid var(--border-color);
+            animation: fadeIn 0.3s ease-out;
         }
 
         .message.own {
@@ -271,17 +340,11 @@
             color: white;
             cursor: pointer;
             font-weight: 600;
-            transition: background-color 0.2s;
             flex-shrink: 0;
         }
 
         .send-btn:hover {
             background-color: #00c49a;
-        }
-
-        .send-btn:disabled {
-            background-color: var(--border-color);
-            cursor: not-allowed;
         }
 
         .welcome-message {
@@ -295,14 +358,124 @@
             color: var(--text-primary);
         }
 
+        /* Окно звонка */
+        .call-window {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+        }
+
+        .call-window.active {
+            display: flex;
+        }
+
+        .call-header {
+            padding: 20px;
+            background: var(--bg-tertiary);
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .call-main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            position: relative;
+        }
+
+        .video-container {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 16/9;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--accent-primary);
+        }
+
+        .remote-video {
+            font-size: 1.5em;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .local-video {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            border: 2px solid var(--accent-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+
+        .call-controls-bottom {
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            background: var(--bg-tertiary);
+        }
+
+        .call-control-btn {
+            width: 60px;
+            height: 60px;
+            border: none;
+            border-radius: 50%;
+            background: var(--bg-secondary);
+            color: white;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .call-control-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .call-control-btn.mute {
+            background: #666;
+        }
+
+        .call-control-btn.video-off {
+            background: #666;
+        }
+
+        .call-control-btn.end-call {
+            background: var(--danger);
+        }
+
         /* Анимации */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .message {
-            animation: fadeIn 0.3s ease-out;
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .call-btn-small.pulse {
+            animation: pulse 1s infinite;
+            background: var(--accent-primary);
         }
 
         /* Полоса прокрутки */
@@ -340,9 +513,9 @@
             </div>
             
             <div class="online-users">
-                <h4>Онлайн сейчас</h4>
+                <h4>Пользователи онлайн</h4>
                 <div class="user-list" id="userList">
-                    <!-- Список пользователей будет здесь -->
+                    <!-- Пользователи будут здесь -->
                 </div>
             </div>
         </div>
@@ -352,14 +525,25 @@
             <div class="chat-header">
                 <div class="chat-info">
                     <h2 id="chatTitle">Общий чат</h2>
-                    <div class="chat-status" id="chatStatus">3 пользователя онлайн</div>
+                    <div class="chat-status" id="chatStatus">Выберите пользователя для общения</div>
+                </div>
+                <div class="call-controls" id="callControls" style="display: none;">
+                    <button class="call-btn" id="voiceCallBtn">
+                        📞 Аудиозвонок
+                    </button>
+                    <button class="call-btn video" id="videoCallBtn">
+                        📹 Видеозвонок
+                    </button>
+                    <button class="call-btn end-call" id="endCallBtn" style="display: none;">
+                        📞 Завершить
+                    </button>
                 </div>
             </div>
 
             <div class="messages-container" id="messagesContainer">
-                <div class="welcome-message" id="welcomeMessage">
-                    <h3>Добро пожаловать в общий чат!</h3>
-                    <p>Выберите пользователя для общения или пишите в общий чат</p>
+                <div class="welcome-message">
+                    <h3>Добро пожаловать в MultiChat!</h3>
+                    <p>Выберите пользователя слева для начала общения или звонка</p>
                 </div>
             </div>
 
@@ -376,34 +560,57 @@
                 </div>
             </div>
         </div>
+
+        <!-- Окно звонка -->
+        <div class="call-window" id="callWindow">
+            <div class="call-header">
+                <h2 id="callTitle">Звонок пользователю</h2>
+                <div id="callStatus">Соединение...</div>
+            </div>
+            <div class="call-main">
+                <div class="video-container">
+                    <div class="remote-video" id="remoteVideo">
+                        📹 Видеозвонок
+                    </div>
+                </div>
+                <div class="local-video" id="localVideo">
+                    Ваша камера
+                </div>
+            </div>
+            <div class="call-controls-bottom">
+                <button class="call-control-btn" id="callMuteBtn">🎤</button>
+                <button class="call-control-btn" id="callVideoBtn">📹</button>
+                <button class="call-control-btn end-call" id="callEndBtn">📞</button>
+            </div>
+        </div>
     </div>
 
     <script>
-        class MultiUserChat {
+        class ChatWithCalls {
             constructor() {
                 this.currentUser = null;
-                this.users = [];
-                this.messages = [];
-                this.currentChat = 'general';
-                this.initializeElements();
-                this.checkAuth();
-                this.loadUsers();
-                this.bindEvents();
-                this.autoResizeTextarea();
-                this.startSimulation();
+                this.currentCall = null;
+                this.isInCall = false;
+                this.isMuted = false;
+                this.isVideoOn = true;
+                this.users = [
+                    { id: '1', username: 'Алексей', online: true, avatar: 'А' },
+                    { id: '2', username: 'Мария', online: true, avatar: 'М' },
+                    { id: '3', username: 'Дмитрий', online: false, avatar: 'Д' },
+                    { id: '4', username: 'Анна', online: true, avatar: 'А' },
+                    { id: '5', username: 'Сергей', online: true, avatar: 'С' }
+                ];
+                
+                this.init();
             }
 
-            initializeElements() {
-                this.messageInput = document.getElementById('messageInput');
-                this.sendBtn = document.getElementById('sendBtn');
-                this.messagesContainer = document.getElementById('messagesContainer');
-                this.welcomeMessage = document.getElementById('welcomeMessage');
-                this.userName = document.getElementById('userName');
-                this.userAvatar = document.getElementById('userAvatar');
-                this.logoutBtn = document.getElementById('logoutBtn');
-                this.userList = document.getElementById('userList');
-                this.chatTitle = document.getElementById('chatTitle');
-                this.chatStatus = document.getElementById('chatStatus');
+            init() {
+                this.checkAuth();
+                this.setupElements();
+                this.bindEvents();
+                this.renderUserList();
+                this.loadMessages();
+                this.startBot();
             }
 
             checkAuth() {
@@ -412,127 +619,44 @@
                     window.location.href = 'index.html';
                     return;
                 }
-
                 this.currentUser = JSON.parse(userData);
                 this.displayUserInfo();
-                this.loadChatHistory();
             }
 
             displayUserInfo() {
+                const userName = document.getElementById('userName');
+                const userAvatar = document.getElementById('userAvatar');
+                
                 if (this.currentUser) {
-                    this.userName.textContent = this.currentUser.username;
-                    this.userAvatar.textContent = this.currentUser.username.charAt(0).toUpperCase();
-                    
-                    if (this.currentUser.avatar) {
-                        this.userAvatar.style.backgroundImage = `url(${this.currentUser.avatar})`;
-                        this.userAvatar.style.backgroundSize = 'cover';
-                    }
+                    userName.textContent = this.currentUser.username;
+                    userAvatar.textContent = this.currentUser.username.charAt(0).toUpperCase();
                 }
             }
 
-            loadUsers() {
-                // Загружаем пользователей из localStorage
-                const savedUsers = JSON.parse(localStorage.getItem('chatUsers') || '[]');
+            setupElements() {
+                this.messageInput = document.getElementById('messageInput');
+                this.sendBtn = document.getElementById('sendBtn');
+                this.messagesContainer = document.getElementById('messagesContainer');
+                this.logoutBtn = document.getElementById('logoutBtn');
+                this.userList = document.getElementById('userList');
+                this.chatTitle = document.getElementById('chatTitle');
+                this.chatStatus = document.getElementById('chatStatus');
+                this.callControls = document.getElementById('callControls');
                 
-                // Добавляем тестовых пользователей если нет реальных
-                if (savedUsers.length <= 1) {
-                    this.users = [
-                        {
-                            id: '1',
-                            username: 'Алексей',
-                            avatar: 'https://ui-avatars.com/api/?name=Алексей&background=667eea&color=fff',
-                            online: true
-                        },
-                        {
-                            id: '2', 
-                            username: 'Мария',
-                            avatar: 'https://ui-avatars.com/api/?name=Мария&background=f093fb&color=fff',
-                            online: true
-                        },
-                        {
-                            id: '3',
-                            username: 'Дмитрий',
-                            avatar: 'https://ui-avatars.com/api/?name=Дмитрий&background=4ecdc4&color=fff',
-                            online: false
-                        }
-                    ];
-                } else {
-                    this.users = savedUsers.map(user => ({
-                        ...user,
-                        online: Math.random() > 0.3 // Случайный онлайн статус
-                    }));
-                }
-
-                this.renderUserList();
-            }
-
-            renderUserList() {
-                this.userList.innerHTML = '';
-                
-                // Добавляем общий чат
-                const generalChat = document.createElement('div');
-                generalChat.className = 'online-user active';
-                generalChat.innerHTML = `
-                    <div class="user-avatar">💬</div>
-                    <div>Общий чат</div>
-                    <div class="user-status-indicator"></div>
-                `;
-                generalChat.addEventListener('click', () => this.switchToGeneralChat());
-                this.userList.appendChild(generalChat);
-
-                // Добавляем пользователей
-                this.users.forEach(user => {
-                    if (user.id !== this.currentUser.id) {
-                        const userElement = document.createElement('div');
-                        userElement.className = 'online-user';
-                        userElement.innerHTML = `
-                            <div class="user-avatar">${user.username.charAt(0)}</div>
-                            <div>${user.username}</div>
-                            <div class="user-status-indicator" style="background-color: ${user.online ? '#00d4aa' : '#8899a6'}"></div>
-                        `;
-                        userElement.addEventListener('click', () => this.switchToPrivateChat(user));
-                        this.userList.appendChild(userElement);
-                    }
-                });
-
-                this.updateOnlineCount();
-            }
-
-            switchToGeneralChat() {
-                this.currentChat = 'general';
-                this.chatTitle.textContent = 'Общий чат';
-                this.loadChatHistory();
-            }
-
-            switchToPrivateChat(user) {
-                this.currentChat = user.id;
-                this.chatTitle.textContent = user.username;
-                this.chatStatus.textContent = user.online ? 'онлайн' : 'был недавно';
-                this.loadChatHistory();
-            }
-
-            loadChatHistory() {
-                const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
-                const currentChatHistory = chatHistory.filter(msg => 
-                    msg.chat === this.currentChat || 
-                    (this.currentChat === 'general' && !msg.chat)
-                );
-
-                this.messagesContainer.innerHTML = '';
-                
-                if (currentChatHistory.length === 0) {
-                    this.welcomeMessage.style.display = 'block';
-                } else {
-                    this.welcomeMessage.style.display = 'none';
-                    currentChatHistory.forEach(msg => {
-                        this.addMessage(msg.sender, msg.text, msg.senderId === this.currentUser.id, msg.time, false);
-                    });
-                }
-
-                this.scrollToBottom();
+                // Элементы звонков
+                this.callWindow = document.getElementById('callWindow');
+                this.callTitle = document.getElementById('callTitle');
+                this.callStatus = document.getElementById('callStatus');
+                this.voiceCallBtn = document.getElementById('voiceCallBtn');
+                this.videoCallBtn = document.getElementById('videoCallBtn');
+                this.endCallBtn = document.getElementById('endCallBtn');
+                this.callMuteBtn = document.getElementById('callMuteBtn');
+                this.callVideoBtn = document.getElementById('callVideoBtn');
+                this.callEndBtn = document.getElementById('callEndBtn');
             }
 
             bindEvents() {
+                // Сообщения
                 this.sendBtn.addEventListener('click', () => this.sendMessage());
                 this.messageInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -541,70 +665,183 @@
                     }
                 });
 
-                this.logoutBtn.addEventListener('click', () => this.logout());
-            }
+                this.logoutBtn.addEventListener('click', () => {
+                    localStorage.removeItem('currentUser');
+                    window.location.href = 'index.html';
+                });
 
-            autoResizeTextarea() {
+                // Авто-размер текстового поля
                 this.messageInput.addEventListener('input', () => {
                     this.messageInput.style.height = 'auto';
                     this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 120) + 'px';
                 });
+
+                // Звонки
+                this.voiceCallBtn.addEventListener('click', () => this.startVoiceCall());
+                this.videoCallBtn.addEventListener('click', () => this.startVideoCall());
+                this.endCallBtn.addEventListener('click', () => this.endCall());
+                this.callMuteBtn.addEventListener('click', () => this.toggleMute());
+                this.callVideoBtn.addEventListener('click', () => this.toggleVideo());
+                this.callEndBtn.addEventListener('click', () => this.endCall());
             }
 
-            sendMessage() {
-                const message = this.messageInput.value.trim();
-                if (!message) return;
-
-                this.addMessage(this.currentUser.username, message, true);
-                this.saveMessageToHistory(this.currentUser.username, message, true, this.currentUser.id);
-                this.messageInput.value = '';
-                this.messageInput.style.height = 'auto';
-                this.scrollToBottom();
+            renderUserList() {
+                this.userList.innerHTML = '';
                 
-                // Имитация ответов других пользователей
-                if (this.currentChat === 'general') {
-                    this.simulateResponses(message);
-                }
-            }
+                this.users.forEach(user => {
+                    const userElement = document.createElement('div');
+                    userElement.className = 'online-user';
+                    userElement.innerHTML = `
+                        <div class="user-avatar">${user.avatar}</div>
+                        <div class="user-info-small">
+                            <div class="user-name">${user.username}</div>
+                            <div class="user-status-text">${user.online ? '● онлайн' : '○ офлайн'}</div>
+                        </div>
+                        <div class="call-buttons">
+                            <button class="call-btn-small" data-user-id="${user.id}" data-type="voice">📞</button>
+                            <button class="call-btn-small" data-user-id="${user.id}" data-type="video">📹</button>
+                        </div>
+                    `;
 
-            simulateResponses(originalMessage) {
-                const onlineUsers = this.users.filter(user => user.online && user.id !== this.currentUser.id);
-                
-                onlineUsers.forEach((user, index) => {
-                    if (Math.random() > 0.5) { // 50% шанс ответа
-                        setTimeout(() => {
-                            const responses = this.getResponseForMessage(originalMessage);
-                            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-                            this.addMessage(user.username, randomResponse, false);
-                            this.saveMessageToHistory(user.username, randomResponse, false, user.id);
-                        }, 1000 + (index * 2000));
-                    }
+                    // Клик по пользователю
+                    userElement.addEventListener('click', (e) => {
+                        if (!e.target.classList.contains('call-btn-small')) {
+                            this.selectUser(user);
+                        }
+                    });
+
+                    // Звонки
+                    const voiceBtn = userElement.querySelector('[data-type="voice"]');
+                    const videoBtn = userElement.querySelector('[data-type="video"]');
+                    
+                    voiceBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.startCall(user, 'voice');
+                    });
+                    
+                    videoBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.startCall(user, 'video');
+                    });
+
+                    this.userList.appendChild(userElement);
                 });
             }
 
-            getResponseForMessage(message) {
-                const lowerMessage = message.toLowerCase();
+            selectUser(user) {
+                this.currentCall = user;
+                this.chatTitle.textContent = user.username;
+                this.chatStatus.textContent = user.online ? 'онлайн' : 'офлайн';
+                this.callControls.style.display = 'flex';
                 
-                if (lowerMessage.includes('привет') || lowerMessage.includes('hello')) {
-                    return ['Привет!', 'Здравствуй!', 'Привет :)', 'Привет, как дела?'];
-                } else if (lowerMessage.includes('как дела')) {
-                    return ['Отлично!', 'Нормально', 'Хорошо, а у тебя?', 'Не жалуюсь'];
-                } else if (lowerMessage.includes?'?')) {
-                    return ['Интересный вопрос...', 'Не знаю точно', 'Думаю, да', 'Возможно'];
-                } else {
-                    return ['Понятно', 'Интересно', 'Согласен', 'Ага', 'Хм...'];
+                // Показываем историю переписки с этим пользователем
+                this.loadUserMessages(user.id);
+            }
+
+            startCall(user, type) {
+                if (!user.online) {
+                    alert('Пользователь офлайн');
+                    return;
+                }
+
+                this.currentCall = user;
+                this.isInCall = true;
+                this.callTitle.textContent = `${type === 'video' ? 'Видео' : 'Аудио'}звонок с ${user.username}`;
+                this.callStatus.textContent = 'Установка соединения...';
+                this.callWindow.classList.add('active');
+                
+                // Имитация установки соединения
+                setTimeout(() => {
+                    this.callStatus.textContent = 'Соединение установлено';
+                    this.simulateCallResponse(user);
+                }, 2000);
+
+                this.addSystemMessage(`📞 ${type === 'video' ? 'Видео' : 'Аудио'}звонок с ${user.username}`);
+            }
+
+            startVoiceCall() {
+                if (!this.currentCall) return;
+                this.startCall(this.currentCall, 'voice');
+            }
+
+            startVideoCall() {
+                if (!this.currentCall) return;
+                this.startCall(this.currentCall, 'video');
+            }
+
+            simulateCallResponse(user) {
+                // Имитация ответа пользователя
+                setTimeout(() => {
+                    if (Math.random() > 0.3) { // 70% шанс ответа
+                        this.callStatus.textContent = 'Разговор активен';
+                        this.addSystemMessage(`✅ ${user.username} принял звонок`);
+                    } else {
+                        this.callStatus.textContent = 'Звонок отклонен';
+                        this.addSystemMessage(`❌ ${user.username} отклонил звонок`);
+                        setTimeout(() => this.endCall(), 2000);
+                    }
+                }, 3000);
+            }
+
+            endCall() {
+                this.isInCall = false;
+                this.callWindow.classList.remove('active');
+                this.resetCallControls();
+                
+                if (this.currentCall) {
+                    this.addSystemMessage(`📞 Звонок с ${this.currentCall.username} завершен`);
                 }
             }
 
-            addMessage(sender, text, isOwn = false, time = null, animate = true) {
-                if (this.welcomeMessage.style.display !== 'none') {
-                    this.welcomeMessage.style.display = 'none';
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                this.callMuteBtn.classList.toggle('mute', this.isMuted);
+                this.callMuteBtn.textContent = this.isMuted ? '🎤❌' : '🎤';
+                this.addSystemMessage(this.isMuted ? 'Микрофон выключен' : 'Микрофон включен');
+            }
+
+            toggleVideo() {
+                this.isVideoOn = !this.isVideoOn;
+                this.callVideoBtn.classList.toggle('video-off', !this.isVideoOn);
+                this.callVideoBtn.textContent = this.isVideoOn ? '📹' : '📹❌';
+                this.addSystemMessage(this.isVideoOn ? 'Камера включена' : 'Камера выключена');
+            }
+
+            resetCallControls() {
+                this.isMuted = false;
+                this.isVideoOn = true;
+                this.callMuteBtn.classList.remove('mute');
+                this.callMuteBtn.textContent = '🎤';
+                this.callVideoBtn.classList.remove('video-off');
+                this.callVideoBtn.textContent = '📹';
+            }
+
+            sendMessage() {
+                const text = this.messageInput.value.trim();
+                if (!text) return;
+
+                this.addMessage(this.currentUser.username, text, true);
+                this.saveMessage(this.currentUser.username, text, true, this.currentCall?.id);
+                
+                this.messageInput.value = '';
+                this.messageInput.style.height = 'auto';
+                
+                // Ответ бота
+                if (this.currentCall) {
+                    setTimeout(() => {
+                        this.botResponse(text);
+                    }, 1000);
                 }
+            }
+
+            addMessage(sender, text, isOwn = false) {
+                const welcome = document.querySelector('.welcome-message');
+                if (welcome) welcome.style.display = 'none';
 
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${isOwn ? 'own' : ''}`;
                 
-                const messageTime = time || new Date().toLocaleTimeString('ru-RU', { 
+                const time = new Date().toLocaleTimeString('ru-RU', { 
                     hour: '2-digit', 
                     minute: '2-digit' 
                 });
@@ -612,93 +849,124 @@
                 messageDiv.innerHTML = `
                     <div class="message-header">
                         <span class="sender-name">${sender}</span>
-                        <span class="message-time">${messageTime}</span>
+                        <span class="message-time">${time}</span>
                     </div>
-                    <div>${this.escapeHtml(text)}</div>
+                    <div>${text}</div>
                 `;
-
-                if (animate) {
-                    messageDiv.style.animation = 'fadeIn 0.3s ease-out';
-                }
 
                 this.messagesContainer.appendChild(messageDiv);
                 this.scrollToBottom();
             }
 
-            saveMessageToHistory(sender, text, isOwn, senderId) {
-                const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
-                
-                chatHistory.push({
+            addSystemMessage(text) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'system-message';
+                messageDiv.textContent = text;
+                this.messagesContainer.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+
+            saveMessage(sender, text, isOwn, chatId = 'general') {
+                const messages = JSON.parse(localStorage.getItem('chatMessages') || '[]');
+                messages.push({
                     sender,
                     text,
                     isOwn,
-                    senderId,
-                    chat: this.currentChat,
+                    chatId,
                     time: new Date().toLocaleTimeString('ru-RU', { 
                         hour: '2-digit', 
                         minute: '2-digit' 
                     })
                 });
-
-                // Сохраняем только последние 200 сообщений
-                if (chatHistory.length > 200) {
-                    chatHistory.splice(0, chatHistory.length - 200);
-                }
-
-                localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+                
+                if (messages.length > 50) messages.shift();
+                localStorage.setItem('chatMessages', JSON.stringify(messages));
             }
 
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
+            loadMessages() {
+                const messages = JSON.parse(localStorage.getItem('chatMessages') || '[]');
+                const welcome = document.querySelector('.welcome-message');
+                
+                if (messages.length > 0 && welcome) {
+                    welcome.style.display = 'none';
+                }
+                
+                messages.forEach(msg => {
+                    this.addMessage(msg.sender, msg.text, msg.isOwn);
+                });
+            }
+
+            loadUserMessages(userId) {
+                const messages = JSON.parse(localStorage.getItem('chatMessages') || '[]');
+                const userMessages = messages.filter(msg => msg.chatId === userId);
+                
+                this.messagesContainer.innerHTML = '';
+                
+                if (userMessages.length === 0) {
+                    const welcome = document.createElement('div');
+                    welcome.className = 'welcome-message';
+                    welcome.innerHTML = `
+                        <h3>Начните общение с ${this.currentCall.username}</h3>
+                        <p>Это начало вашей переписки</p>
+                    `;
+                    this.messagesContainer.appendChild(welcome);
+                } else {
+                    userMessages.forEach(msg => {
+                        this.addMessage(msg.sender, msg.text, msg.isOwn);
+                    });
+                }
+            }
+
+            botResponse(userMessage) {
+                const responses = {
+                    'привет': ['Привет!', 'Здравствуйте!', 'Привет :)'],
+                    'звонок': ['Готов к звонку!', 'Можем позвонить', 'Отличная идея!'],
+                    'как дела': ['Отлично! Готов общаться', 'Хорошо, спасибо!', 'Нормально'],
+                    'пока': ['До свидания!', 'Пока!', 'Удачи!'],
+                    'default': ['Интересно...', 'Понятно', 'Расскажи больше']
+                };
+
+                const lowerMessage = userMessage.toLowerCase();
+                let response = responses.default[0];
+
+                for (const [key, answers] of Object.entries(responses)) {
+                    if (lowerMessage.includes(key)) {
+                        response = answers[Math.floor(Math.random() * answers.length)];
+                        break;
+                    }
+                }
+
+                this.addMessage(this.currentCall.username, response, false);
+                this.saveMessage(this.currentCall.username, response, false, this.currentCall.id);
+            }
+
+            startBot() {
+                // Случайные сообщения от ботов
+                setInterval(() => {
+                    if (Math.random() > 0.8 && this.currentCall) {
+                        const messages = [
+                            'Привет! Как дела?',
+                            'Есть время пообщаться?',
+                            'Можем созвониться если хочешь',
+                            'Что нового?',
+                            'Отличная погода для общения!'
+                        ];
+                        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+                        
+                        this.addMessage(this.currentCall.username, randomMessage, false);
+                        this.saveMessage(this.currentCall.username, randomMessage, false, this.currentCall.id);
+                    }
+                }, 20000);
             }
 
             scrollToBottom() {
                 this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
             }
-
-            updateOnlineCount() {
-                const onlineCount = this.users.filter(user => user.online).length;
-                this.chatStatus.textContent = `${onlineCount} пользователей онлайн`;
-            }
-
-            startSimulation() {
-                // Имитация активности пользователей
-                setInterval(() => {
-                    this.users.forEach(user => {
-                        if (user.id !== this.currentUser.id && Math.random() > 0.8) {
-                            user.online = !user.online;
-                        }
-                    });
-                    this.renderUserList();
-                }, 10000);
-
-                // Случайные сообщения в общий чат
-                setInterval(() => {
-                    if (this.currentChat === 'general' && Math.random() > 0.9) {
-                        const onlineUsers = this.users.filter(user => user.online && user.id !== this.currentUser.id);
-                        if (onlineUsers.length > 0) {
-                            const randomUser = onlineUsers[Math.floor(Math.random() * onlineUsers.length)];
-                            const randomMessages = ['Всем привет!', 'Кто онлайн?', 'Как дела?', 'Что нового?'];
-                            const randomMessage = randomMessages[Math.floor(Math.random() * randomMessages.length)];
-                            
-                            this.addMessage(randomUser.username, randomMessage, false);
-                            this.saveMessageToHistory(randomUser.username, randomMessage, false, randomUser.id);
-                        }
-                    }
-                }, 30000);
-            }
-
-            logout() {
-                localStorage.removeItem('currentUser');
-                window.location.href = 'index.html';
-            }
         }
 
-        // Инициализация чата
+        // Запускаем чат когда страница загрузится
         document.addEventListener('DOMContentLoaded', () => {
-            new MultiUserChat();
+            new ChatWithCalls();
         });
     </script>
 </body>
