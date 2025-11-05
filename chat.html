@@ -91,6 +91,10 @@
             margin-top: 8px;
         }
 
+        .logout-btn:hover {
+            background-color: var(--bg-tertiary);
+        }
+
         .online-users {
             padding: 15px 20px;
             border-bottom: 1px solid var(--border-color);
@@ -113,6 +117,11 @@
             gap: 10px;
             padding: 8px;
             border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .user-item:hover {
+            background-color: var(--bg-tertiary);
         }
 
         .user-avatar {
@@ -127,12 +136,35 @@
             font-size: 0.9em;
         }
 
+        .call-buttons {
+            display: flex;
+            gap: 5px;
+            margin-left: auto;
+        }
+
+        .call-btn-small {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+        }
+
+        .call-btn-small:hover {
+            background: var(--accent-primary);
+        }
+
         .user-status-indicator {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             background-color: var(--accent-primary);
-            margin-left: auto;
         }
 
         .rooms {
@@ -557,7 +589,6 @@
             animation: pulse 2s infinite;
         }
 
-        /* Полоса прокрутки */
         ::-webkit-scrollbar {
             width: 6px;
         }
@@ -624,11 +655,8 @@
                     </div>
                 </div>
                 <div class="call-controls">
-                    <button class="call-btn" id="voiceCallBtn">
-                        📞 Аудиозвонок
-                    </button>
-                    <button class="call-btn" id="videoCallBtn">
-                        📹 Видеозвонок
+                    <button class="call-btn" id="groupVoiceCallBtn">
+                        📞 Групповой звонок
                     </button>
                 </div>
             </div>
@@ -636,7 +664,7 @@
             <div class="messages-container" id="messagesContainer">
                 <div class="system-message">
                     <h3>Добро пожаловать в NoknowGram!</h3>
-                    <p>Выберите комнату для начала общения</p>
+                    <p>Загрузка сообщений...</p>
                 </div>
             </div>
 
@@ -668,10 +696,11 @@
             <div class="video-container">
                 <video id="remoteVideo" autoplay playsinline class="remote-video"></video>
                 <div class="video-placeholder" id="videoPlaceholder">
-                    📹 Подключение видео...
+                    📹 Ожидание видео...
                 </div>
                 <div class="call-info">
                     <div id="callTimer">00:00</div>
+                    <div id="callWith"></div>
                 </div>
                 <div class="local-video">
                     <video id="localVideo" autoplay playsinline muted></video>
@@ -715,9 +744,11 @@
                 this.isInCall = false;
                 this.isCaller = false;
                 this.callStartTime = null;
-                this.callTimer = null;
+                this.callTimerInterval = null;
                 this.currentCaller = null;
                 this.currentCallType = null;
+                this.currentCallId = null;
+                this.targetUser = null;
                 
                 this.init();
             }
@@ -727,6 +758,7 @@
                 this.setupElements();
                 this.connectSocket();
                 this.bindEvents();
+                this.loadRoomMessages();
             }
 
             checkAuth() {
@@ -764,9 +796,11 @@
                 this.localVideo = document.getElementById('localVideo');
                 this.videoPlaceholder = document.getElementById('videoPlaceholder');
                 this.callTimer = document.getElementById('callTimer');
+                this.callWith = document.getElementById('callWith');
                 this.callMuteBtn = document.getElementById('callMuteBtn');
                 this.callVideoBtn = document.getElementById('callVideoBtn');
                 this.callEndBtn = document.getElementById('callEndBtn');
+                this.groupVoiceCallBtn = document.getElementById('groupVoiceCallBtn');
                 
                 // Входящий звонок
                 this.incomingCallModal = document.getElementById('incomingCallModal');
@@ -775,6 +809,26 @@
                 this.callType = document.getElementById('callType');
                 this.acceptCallBtn = document.getElementById('acceptCallBtn');
                 this.rejectCallBtn = document.getElementById('rejectCallBtn');
+            }
+
+            async loadRoomMessages() {
+                try {
+                    const response = await fetch(`/api/messages/${this.currentRoom}`);
+                    const data = await response.json();
+                    
+                    this.messagesContainer.innerHTML = '';
+                    
+                    if (data.messages.length === 0) {
+                        this.addSystemMessage(`Начните общение в комнате "${this.getRoomName(this.currentRoom)}"`);
+                    } else {
+                        data.messages.forEach(msg => {
+                            this.addMessage(msg.username, msg.text, msg.username === this.currentUser.username, msg.timestamp, msg.file, msg.type);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading messages:', error);
+                    this.addSystemMessage('Ошибка загрузки сообщений');
+                }
             }
 
             connectSocket() {
@@ -807,8 +861,17 @@
                     this.handleTypingIndicator(data.username, data.is_typing);
                 });
 
+                // Входящий звонок
                 this.socket.on('incoming_call', (data) => {
-                    this.handleIncomingCall(data.caller, data.type);
+                    this.handleIncomingCall(data.caller, data.type, data.call_id);
+                });
+
+                this.socket.on('call_accepted', (data) => {
+                    this.handleCallAccepted(data.accepted_by, data.call_id);
+                });
+
+                this.socket.on('call_rejected', (data) => {
+                    this.handleCallRejected(data.rejected_by);
                 });
 
                 this.socket.on('call_ended', (data) => {
@@ -816,16 +879,16 @@
                 });
 
                 // WebRTC signaling
-                this.socket.on('offer', (data) => {
-                    this.handleOffer(data.offer, data.caller);
+                this.socket.on('webrtc_offer', (data) => {
+                    this.handleWebRTCOffer(data.offer, data.caller, data.call_id);
                 });
 
-                this.socket.on('answer', (data) => {
-                    this.handleAnswer(data.answer);
+                this.socket.on('webrtc_answer', (data) => {
+                    this.handleWebRTCAnswer(data.answer, data.call_id);
                 });
 
-                this.socket.on('ice-candidate', (data) => {
-                    this.handleIceCandidate(data.candidate);
+                this.socket.on('webrtc_ice_candidate', (data) => {
+                    this.handleWebRTCIceCandidate(data.candidate, data.call_id);
                 });
             }
 
@@ -858,11 +921,8 @@
                 });
 
                 // Звонки
-                document.getElementById('voiceCallBtn').addEventListener('click', () => {
-                    this.startCall('voice');
-                });
-                document.getElementById('videoCallBtn').addEventListener('click', () => {
-                    this.startCall('video');
+                this.groupVoiceCallBtn.addEventListener('click', () => {
+                    this.addSystemMessage('📞 Групповой звонок начат в этой комнате');
                 });
 
                 // Управление звонком
@@ -876,302 +936,12 @@
 
                 // Выход
                 this.logoutBtn.addEventListener('click', () => {
+                    this.endCall();
                     localStorage.removeItem('currentUser');
                     window.location.href = '/';
                 });
             }
 
-            // WebRTC функции
-            async startCall(type) {
-                if (this.isInCall) return;
-
-                try {
-                    this.isCaller = true;
-                    this.currentCallType = type;
-                    this.isInCall = true;
-
-                    // Получаем медиапоток
-                    const constraints = {
-                        audio: true,
-                        video: type === 'video'
-                    };
-
-                    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    this.localVideo.srcObject = this.localStream;
-
-                    // Создаем Peer Connection
-                    this.createPeerConnection();
-
-                    // Добавляем локальный поток
-                    this.localStream.getTracks().forEach(track => {
-                        this.peerConnection.addTrack(track, this.localStream);
-                    });
-
-                    // Создаем offer
-                    const offer = await this.peerConnection.createOffer();
-                    await this.peerConnection.setLocalDescription(offer);
-
-                    // Отправляем offer через Socket.IO
-                    this.socket.emit('offer', {
-                        offer: offer,
-                        caller: this.currentUser.username,
-                        type: type
-                    });
-
-                    // Показываем окно звонка
-                    this.showCallWindow('Исходящий звонок...', 'Ожидание ответа');
-                    
-                    this.addSystemMessage(`📞 Вы начали ${type === 'voice' ? 'аудио' : 'видео'}звонок`);
-
-                } catch (error) {
-                    console.error('Error starting call:', error);
-                    this.addSystemMessage('❌ Ошибка начала звонка: ' + error.message);
-                    this.endCall();
-                }
-            }
-
-            async handleIncomingCall(caller, type) {
-                if (this.isInCall) return;
-
-                this.currentCaller = caller;
-                this.currentCallType = type;
-
-                // Показываем модальное окно входящего звонка
-                this.callerName.textContent = `Входящий звонок от ${caller}`;
-                this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
-                this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
-                this.incomingCallModal.classList.add('active');
-
-                // Автоматическое отклонение через 30 секунд
-                setTimeout(() => {
-                    if (this.incomingCallModal.classList.contains('active')) {
-                        this.rejectCall();
-                    }
-                }, 30000);
-            }
-
-            async acceptCall() {
-                this.incomingCallModal.classList.remove('active');
-                
-                try {
-                    this.isInCall = true;
-                    this.isCaller = false;
-
-                    // Получаем медиапоток
-                    const constraints = {
-                        audio: true,
-                        video: this.currentCallType === 'video'
-                    };
-
-                    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    this.localVideo.srcObject = this.localStream;
-
-                    // Создаем Peer Connection
-                    this.createPeerConnection();
-
-                    // Добавляем локальный поток
-                    this.localStream.getTracks().forEach(track => {
-                        this.peerConnection.addTrack(track, this.localStream);
-                    });
-
-                    // Показываем окно звонка
-                    this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение установлено');
-                    this.startCallTimer();
-
-                    this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
-
-                } catch (error) {
-                    console.error('Error accepting call:', error);
-                    this.addSystemMessage('❌ Ошибка принятия звонка');
-                    this.endCall();
-                }
-            }
-
-            rejectCall() {
-                this.incomingCallModal.classList.remove('active');
-                this.socket.emit('call_ended', { username: this.currentUser.username });
-                this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
-                this.currentCaller = null;
-            }
-
-            createPeerConnection() {
-                const configuration = {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' }
-                    ]
-                };
-
-                this.peerConnection = new RTCPeerConnection(configuration);
-
-                // Обработка удаленного потока
-                this.peerConnection.ontrack = (event) => {
-                    this.remoteStream = event.streams[0];
-                    this.remoteVideo.srcObject = this.remoteStream;
-                    this.videoPlaceholder.style.display = 'none';
-                };
-
-                // Обработка ICE кандидатов
-                this.peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        this.socket.emit('ice-candidate', {
-                            candidate: event.candidate,
-                            target: this.currentCaller
-                        });
-                    }
-                };
-
-                // Обновление статуса соединения
-                this.peerConnection.onconnectionstatechange = () => {
-                    const state = this.peerConnection.connectionState;
-                    this.callStatus.textContent = this.getConnectionStateText(state);
-                    
-                    if (state === 'connected') {
-                        this.startCallTimer();
-                    } else if (state === 'failed' || state === 'disconnected') {
-                        this.endCall();
-                    }
-                };
-            }
-
-            async handleOffer(offer, caller) {
-                if (!this.isCaller) {
-                    this.currentCaller = caller;
-                    
-                    // Создаем Peer Connection если его еще нет
-                    if (!this.peerConnection) {
-                        await this.acceptCall();
-                    }
-
-                    await this.peerConnection.setRemoteDescription(offer);
-                    
-                    // Создаем answer
-                    const answer = await this.peerConnection.createAnswer();
-                    await this.peerConnection.setLocalDescription(answer);
-
-                    // Отправляем answer
-                    this.socket.emit('answer', {
-                        answer: answer,
-                        target: caller
-                    });
-                }
-            }
-
-            async handleAnswer(answer) {
-                await this.peerConnection.setRemoteDescription(answer);
-            }
-
-            async handleIceCandidate(candidate) {
-                if (this.peerConnection) {
-                    await this.peerConnection.addIceCandidate(candidate);
-                }
-            }
-
-            getConnectionStateText(state) {
-                const states = {
-                    'new': 'Новое соединение',
-                    'connecting': 'Подключение...',
-                    'connected': 'Соединение установлено',
-                    'disconnected': 'Соединение прервано',
-                    'failed': 'Ошибка соединения',
-                    'closed': 'Соединение закрыто'
-                };
-                return states[state] || state;
-            }
-
-            showCallWindow(title, status) {
-                this.callTitle.textContent = title;
-                this.callStatus.textContent = status;
-                this.callWindow.classList.add('active');
-                this.videoPlaceholder.style.display = 'flex';
-            }
-
-            startCallTimer() {
-                this.callStartTime = new Date();
-                this.updateCallTimer();
-                
-                this.callTimerInterval = setInterval(() => {
-                    this.updateCallTimer();
-                }, 1000);
-            }
-
-            updateCallTimer() {
-                if (this.callStartTime) {
-                    const now = new Date();
-                    const diff = Math.floor((now - this.callStartTime) / 1000);
-                    const minutes = Math.floor(diff / 60);
-                    const seconds = diff % 60;
-                    this.callTimer.textContent = 
-                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                }
-            }
-
-            toggleMute() {
-                if (this.localStream) {
-                    const audioTracks = this.localStream.getAudioTracks();
-                    audioTracks.forEach(track => {
-                        track.enabled = !track.enabled;
-                    });
-                    this.callMuteBtn.classList.toggle('mute', !audioTracks[0].enabled);
-                }
-            }
-
-            toggleVideo() {
-                if (this.localStream) {
-                    const videoTracks = this.localStream.getVideoTracks();
-                    videoTracks.forEach(track => {
-                        track.enabled = !track.enabled;
-                    });
-                    this.callVideoBtn.classList.toggle('video-off', !videoTracks[0].enabled);
-                }
-            }
-
-            endCall() {
-                this.isInCall = false;
-                this.isCaller = false;
-                
-                // Останавливаем медиапотоки
-                if (this.localStream) {
-                    this.localStream.getTracks().forEach(track => track.stop());
-                    this.localStream = null;
-                }
-
-                // Закрываем Peer Connection
-                if (this.peerConnection) {
-                    this.peerConnection.close();
-                    this.peerConnection = null;
-                }
-
-                // Очищаем видео элементы
-                this.localVideo.srcObject = null;
-                this.remoteVideo.srcObject = null;
-
-                // Останавливаем таймер
-                if (this.callTimerInterval) {
-                    clearInterval(this.callTimerInterval);
-                    this.callTimerInterval = null;
-                }
-
-                // Скрываем окно звонка
-                this.callWindow.classList.remove('active');
-                this.incomingCallModal.classList.remove('active');
-
-                // Отправляем уведомление о завершении звонка
-                this.socket.emit('end_call', { username: this.currentUser.username });
-
-                if (this.currentCaller) {
-                    this.addSystemMessage(`📞 Звонок с ${this.currentCaller} завершен`);
-                    this.currentCaller = null;
-                }
-            }
-
-            handleCallEnded(endedBy) {
-                if (this.isInCall) {
-                    this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
-                    this.endCall();
-                }
-            }
-
-            // Остальные методы (sendMessage, uploadFile, etc.) остаются без изменений
             switchRoom(room) {
                 document.querySelectorAll('.room-item').forEach(item => {
                     item.classList.remove('active');
@@ -1180,11 +950,7 @@
                 
                 this.currentRoom = room;
                 this.currentRoomElement.textContent = this.getRoomName(room);
-                this.messagesContainer.innerHTML = '<div class="system-message">Загрузка сообщений...</div>';
-                
-                setTimeout(() => {
-                    this.addSystemMessage(`Вы перешли в комнату "${this.getRoomName(room)}"`);
-                }, 100);
+                this.loadRoomMessages();
             }
 
             getRoomName(room) {
@@ -1244,6 +1010,206 @@
                 }
 
                 this.fileInput.value = '';
+            }
+
+            // ЗВОНКИ - УПРОЩЕННАЯ ВЕРСИЯ ДЛЯ ДЕМО
+            startCall(targetUser, type) {
+                this.targetUser = targetUser;
+                this.currentCallType = type;
+                this.isCaller = true;
+                this.currentCallId = 'call_' + Date.now();
+
+                // Показываем окно звонка
+                this.showCallWindow(`Звонок ${targetUser}`, 'Установка соединения...');
+                this.callWith.textContent = `С: ${targetUser}`;
+
+                // Отправляем запрос на звонок
+                this.socket.emit('start_call', {
+                    username: this.currentUser.username,
+                    target: targetUser,
+                    type: type,
+                    call_id: this.currentCallId
+                });
+
+                // Для демо - сразу начинаем "звонок"
+                setTimeout(() => {
+                    if (this.isInCall) {
+                        this.callStatus.textContent = 'Соединение установлено';
+                        this.startCallTimer();
+                        this.addSystemMessage(`📞 Звонок с ${targetUser} начат`);
+                    }
+                }, 2000);
+            }
+
+            handleIncomingCall(caller, type, call_id) {
+                if (this.isInCall) return;
+
+                this.currentCaller = caller;
+                this.currentCallType = type;
+                this.currentCallId = call_id;
+
+                this.callerName.textContent = `Входящий звонок от ${caller}`;
+                this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
+                this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
+                this.incomingCallModal.classList.add('active');
+            }
+
+            acceptCall() {
+                this.incomingCallModal.classList.remove('active');
+                this.isInCall = true;
+                
+                this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение установлено');
+                this.callWith.textContent = `С: ${this.currentCaller}`;
+                this.startCallTimer();
+
+                // Уведомляем звонящего
+                this.socket.emit('accept_call', {
+                    username: this.currentUser.username,
+                    caller: this.currentCaller,
+                    call_id: this.currentCallId
+                });
+
+                this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
+            }
+
+            rejectCall() {
+                this.incomingCallModal.classList.remove('active');
+                
+                this.socket.emit('reject_call', {
+                    username: this.currentUser.username,
+                    caller: this.currentCaller,
+                    call_id: this.currentCallId
+                });
+
+                this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
+                this.currentCaller = null;
+                this.currentCallId = null;
+            }
+
+            handleCallAccepted(acceptedBy, call_id) {
+                if (this.isCaller && this.currentCallId === call_id) {
+                    this.callStatus.textContent = 'Соединение установлено';
+                    this.startCallTimer();
+                    this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
+                }
+            }
+
+            handleCallRejected(rejectedBy) {
+                if (this.isCaller) {
+                    this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
+                    this.endCall();
+                }
+            }
+
+            showCallWindow(title, status) {
+                this.callTitle.textContent = title;
+                this.callStatus.textContent = status;
+                this.callWindow.classList.add('active');
+                this.videoPlaceholder.style.display = 'flex';
+                this.isInCall = true;
+            }
+
+            startCallTimer() {
+                this.callStartTime = new Date();
+                this.updateCallTimer();
+                
+                this.callTimerInterval = setInterval(() => {
+                    this.updateCallTimer();
+                }, 1000);
+            }
+
+            updateCallTimer() {
+                if (this.callStartTime) {
+                    const now = new Date();
+                    const diff = Math.floor((now - this.callStartTime) / 1000);
+                    const minutes = Math.floor(diff / 60);
+                    const seconds = diff % 60;
+                    this.callTimer.textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+
+            toggleMute() {
+                this.addSystemMessage(this.callMuteBtn.classList.contains('mute') ? '🎤 Микрофон включен' : '🎤 Микрофон выключен');
+                this.callMuteBtn.classList.toggle('mute');
+            }
+
+            toggleVideo() {
+                this.addSystemMessage(this.callVideoBtn.classList.contains('video-off') ? '📹 Камера включена' : '📹 Камера выключена');
+                this.callVideoBtn.classList.toggle('video-off');
+            }
+
+            endCall() {
+                this.isInCall = false;
+                this.isCaller = false;
+                
+                if (this.callTimerInterval) {
+                    clearInterval(this.callTimerInterval);
+                    this.callTimerInterval = null;
+                }
+
+                this.callWindow.classList.remove('active');
+                this.incomingCallModal.classList.remove('active');
+
+                if (this.currentCallId) {
+                    this.socket.emit('end_call', {
+                        username: this.currentUser.username,
+                        call_id: this.currentCallId
+                    });
+                }
+
+                if (this.currentCaller) {
+                    this.addSystemMessage(`📞 Звонок с ${this.currentCaller} завершен`);
+                } else if (this.targetUser) {
+                    this.addSystemMessage(`📞 Звонок с ${this.targetUser} завершен`);
+                }
+
+                this.currentCaller = null;
+                this.targetUser = null;
+                this.currentCallId = null;
+            }
+
+            handleCallEnded(endedBy) {
+                if (this.isInCall) {
+                    this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
+                    this.endCall();
+                }
+            }
+
+            // WebRTC handlers (упрощенные)
+            handleWebRTCOffer(offer, caller, call_id) {
+                // Для демо - просто принимаем оффер
+                console.log('Received WebRTC offer from:', caller);
+            }
+
+            handleWebRTCAnswer(answer, call_id) {
+                console.log('Received WebRTC answer');
+            }
+
+            handleWebRTCIceCandidate(candidate, call_id) {
+                console.log('Received ICE candidate');
+            }
+
+            updateOnlineUsers(users) {
+                this.onlineUsers.innerHTML = '';
+                this.onlineCount.textContent = `${users.length} пользователей онлайн`;
+
+                users.forEach(username => {
+                    if (username !== this.currentUser.username) {
+                        const userElement = document.createElement('div');
+                        userElement.className = 'user-item';
+                        userElement.innerHTML = `
+                            <div class="user-avatar">${username.charAt(0).toUpperCase()}</div>
+                            <div>${username}</div>
+                            <div class="call-buttons">
+                                <button class="call-btn-small" onclick="chatApp.startCall('${username}', 'voice')">📞</button>
+                                <button class="call-btn-small" onclick="chatApp.startCall('${username}', 'video')">📹</button>
+                            </div>
+                            <div class="user-status-indicator"></div>
+                        `;
+                        this.onlineUsers.appendChild(userElement);
+                    }
+                });
             }
 
             handleTyping() {
@@ -1345,24 +1311,6 @@
                 this.scrollToBottom();
             }
 
-            updateOnlineUsers(users) {
-                this.onlineUsers.innerHTML = '';
-                this.onlineCount.textContent = `${users.length} пользователей онлайн`;
-
-                users.forEach(username => {
-                    if (username !== this.currentUser.username) {
-                        const userElement = document.createElement('div');
-                        userElement.className = 'user-item';
-                        userElement.innerHTML = `
-                            <div class="user-avatar">${username.charAt(0).toUpperCase()}</div>
-                            <div>${username}</div>
-                            <div class="user-status-indicator"></div>
-                        `;
-                        this.onlineUsers.appendChild(userElement);
-                    }
-                });
-            }
-
             autoResizeTextarea() {
                 this.messageInput.style.height = 'auto';
                 this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 120) + 'px';
@@ -1373,9 +1321,8 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            new ChatApp();
-        });
+        // Глобальный объект для доступа из кнопок
+        const chatApp = new ChatApp();
     </script>
 </body>
 </html>
