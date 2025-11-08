@@ -1565,39 +1565,89 @@
             }
 
             async createPeerConnection() {
-                const configuration = {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
-                };
+    try {
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+        };
 
-                this.peerConnection = new RTCPeerConnection(configuration);
+        this.peerConnection = new RTCPeerConnection(configuration);
 
-                // Добавляем локальный поток
-                if (this.localStream) {
-                    this.localStream.getTracks().forEach(track => {
-                        this.peerConnection.addTrack(track, this.localStream);
-                    });
+        // ДОБАВЛЯЕМ ОТЛАДКУ АУДИО
+        console.log('Local stream audio tracks:', this.localStream.getAudioTracks());
+        
+        // Добавляем локальный поток
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => {
+                console.log('Adding track:', track.kind, track.enabled, track.readyState);
+                this.peerConnection.addTrack(track, this.localStream);
+            });
+        }
+
+        // Обработчик удаленного потока - ИСПРАВЛЕННЫЙ
+        this.peerConnection.ontrack = (event) => {
+            console.log('Received remote stream with tracks:', event.streams[0].getTracks());
+            
+            if (this.remoteVideo) {
+                this.remoteVideo.srcObject = event.streams[0];
+                this.videoPlaceholder.style.display = 'none';
+                
+                // Автовоспроизведение звука
+                this.remoteVideo.play().catch(e => {
+                    console.log('Auto-play prevented:', e);
+                    // Показываем кнопку для ручного включения звука
+                    this.addSystemMessage('🔊 Нажмите на видео чтобы включить звук');
+                });
+            }
+        };
+
+        // Обработчик ICE кандидатов
+        this.peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                let target = this.currentRoom;
+                if (this.currentRoom.startsWith('private_')) {
+                    const users = this.currentRoom.replace('private_', '').split('_');
+                    target = users.find(user => user !== this.currentUser.username);
                 }
 
-                // Обработчик удаленного потока
-                this.peerConnection.ontrack = (event) => {
-                    console.log('Received remote stream');
-                    if (this.remoteVideo) {
-                        this.remoteVideo.srcObject = event.streams[0];
-                        this.videoPlaceholder.style.display = 'none';
-                    }
-                };
+                this.socket.emit('webrtc_ice_candidate', {
+                    candidate: event.candidate,
+                    call_id: this.currentCallId,
+                    target_user: target,
+                    caller: this.currentUser.username
+                });
+            }
+        };
 
-                // Обработчик ICE кандидатов
-                this.peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        let target = this.currentRoom;
-                        if (this.currentRoom.startsWith('private_')) {
-                            const users = this.currentRoom.replace('private_', '').split('_');
-                            target = users.find(user => user !== this.currentUser.username);
-                        }
+        // Обработчик изменения состояния соединения
+        this.peerConnection.onconnectionstatechange = () => {
+            console.log('Connection state:', this.peerConnection.connectionState);
+            switch (this.peerConnection.connectionState) {
+                case 'connected':
+                    this.callStatus.textContent = 'Соединение установлено';
+                    this.addSystemMessage('✅ Соединение установлено! Говорите сейчас');
+                    break;
+                case 'disconnected':
+                case 'failed':
+                    this.addSystemMessage('❌ Соединение прервано');
+                    this.endCall();
+                    break;
+            }
+        };
+
+        // Отслеживаем аудио потоки
+        this.peerConnection.onnegotiationneeded = () => {
+            console.log('Negotiation needed');
+        };
+
+    } catch (error) {
+        console.error('Error creating peer connection:', error);
+        throw error;
+    }
+}
 
                         this.socket.emit('webrtc_ice_candidate', {
                             candidate: event.candidate,
@@ -1647,54 +1697,35 @@
                 this.incomingCallModal.classList.add('active');
             }
 
-            async acceptCall() {
-                try {
-                    this.incomingCallModal.classList.remove('active');
-                    this.isInCall = true;
-                    this.stopCallSound();
-                    
-                    // Получаем медиа-поток
-                    await this.getUserMedia();
-                    
-                    // Создаем WebRTC соединение
-                    await this.createPeerConnection();
-
-                    // Показываем окно звонка
-                    this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
-                    this.callWith.textContent = `С: ${this.currentCaller}`;
-                    this.startCallTimer();
-
-                    // Устанавливаем удаленное описание (оффер)
-                    if (this.remoteOffer) {
-                        await this.peerConnection.setRemoteDescription(this.remoteOffer);
-                        
-                        // Создаем и отправляем ответ
-                        const answer = await this.peerConnection.createAnswer();
-                        await this.peerConnection.setLocalDescription(answer);
-
-                        this.socket.emit('webrtc_answer', {
-                            answer: answer,
-                            caller: this.currentCaller,
-                            call_id: this.currentCallId
-                        });
-                    }
-
-                    // Уведомляем звонящего
-                    this.socket.emit('accept_call', {
-                        username: this.currentUser.username,
-                        caller: this.currentCaller,
-                        call_id: this.currentCallId
-                    });
-
-                    this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
-
-                } catch (error) {
-                    console.error('Error accepting call:', error);
-                    this.addSystemMessage('❌ Ошибка принятия звонка');
-                    this.endCall();
-                }
-            }
-
+          // Проверка работы микрофона
+async testMicrophone() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true,
+            video: false 
+        });
+        
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        
+        // Проверяем есть ли звук
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(dataArray);
+        const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        
+        console.log('Microphone test - volume level:', volume);
+        
+        // Останавливаем тест
+        stream.getTracks().forEach(track => track.stop());
+        
+        return volume > 5; // Если есть звук
+    } catch (error) {
+        console.error('Microphone test failed:', error);
+        return false;
+    }
+}
             rejectCall() {
                 this.incomingCallModal.classList.remove('active');
                 this.stopCallSound();
