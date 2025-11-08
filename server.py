@@ -4,25 +4,30 @@ from flask_socketio import SocketIO, emit, join_room
 from datetime import datetime
 import hashlib
 import uuid
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'noknowgram-simple-secret'
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Создаем папки
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # База данных
 users_db = {}
-messages_db = {
-    'general': [],
-    'friends': [], 
-    'work': []
-}
-private_messages = {}
+messages_db = {}
 online_users = {}
+groups_db = {}
+user_groups = {}
+
+# Глобальные чаты
+DEFAULT_ROOMS = {
+    'general': '🌍 Главный чат',
+    'random': '🎮 Развлечения',
+    'help': '❓ Помощь'
+}
 
 @app.route('/')
 def serve_index():
@@ -74,13 +79,47 @@ def login():
 # API для получения сообщений
 @app.route('/api/messages/<room>')
 def get_messages(room):
-    if room.startswith('private_'):
-        messages = private_messages.get(room, [])
-    else:
-        messages = messages_db.get(room, [])
+    messages = messages_db.get(room, [])
     return jsonify({'messages': messages})
 
-# Загрузка файлов
+# API для групп
+@app.route('/api/groups/create', methods=['POST'])
+def create_group():
+    data = request.get_json()
+    group_name = data.get('name', '').strip()
+    creator = data.get('creator', '')
+    members = data.get('members', [])
+    
+    if not group_name or not creator:
+        return jsonify({'success': False, 'message': 'Неверные данные'})
+    
+    group_id = f"group_{uuid.uuid4().hex[:8]}"
+    groups_db[group_id] = {
+        'id': group_id,
+        'name': group_name,
+        'creator': creator,
+        'members': list(set([creator] + members)),
+        'created_at': datetime.now().isoformat()
+    }
+    
+    # Создаем комнату для группы
+    messages_db[group_id] = []
+    
+    # Добавляем группу пользователям
+    for member in groups_db[group_id]['members']:
+        if member not in user_groups:
+            user_groups[member] = []
+        user_groups[member].append(group_id)
+    
+    return jsonify({'success': True, 'group': groups_db[group_id]})
+
+@app.route('/api/groups/<username>')
+def get_user_groups(username):
+    user_groups_list = user_groups.get(username, [])
+    groups_data = [groups_db[group_id] for group_id in user_groups_list if group_id in groups_db]
+    return jsonify({'groups': groups_data})
+
+# Загрузка файлов (поддержка всех типов как в Telegram)
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -90,21 +129,39 @@ def upload_file():
     if file.filename == '':
         return jsonify({'success': False, 'message': 'Файл не выбран'})
     
-    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'txt', 'pdf'}
-    file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    # Определяем тип файла
+    original_name = file.filename
+    file_ext = original_name.rsplit('.', 1)[1].lower() if '.' in original_name else ''
     
-    if file_ext not in allowed_extensions:
-        return jsonify({'success': False, 'message': 'Недопустимый тип файла'})
+    file_types = {
+        'images': {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'},
+        'videos': {'mp4', 'avi', 'mov', 'mkv', 'webm', 'flv'},
+        'audio': {'mp3', 'wav', 'ogg', 'm4a', 'flac'},
+        'documents': {'pdf', 'doc', 'docx', 'txt', 'rtf', 'xls', 'xlsx', 'ppt', 'pptx'},
+        'archives': {'zip', 'rar', '7z', 'tar', 'gz'}
+    }
+    
+    file_type = 'other'
+    for type_name, extensions in file_types.items():
+        if file_ext in extensions:
+            file_type = type_name
+            break
     
     filename = f"{uuid.uuid4().hex}.{file_ext}"
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     
+    # Получаем размер файла
+    file_size = os.path.getsize(filepath)
+    
     return jsonify({
         'success': True,
         'filename': filename,
-        'original_name': file.filename,
-        'url': f'/uploads/{filename}'
+        'original_name': original_name,
+        'url': f'/uploads/{filename}',
+        'type': file_type,
+        'size': file_size,
+        'extension': file_ext
     })
 
 @app.route('/uploads/<filename>')
@@ -122,7 +179,6 @@ def handle_disconnect():
         if data.get('sid') == request.sid:
             del online_users[username]
             emit('user_left', {'username': username}, broadcast=True)
-            # ОБНОВЛЯЕМ список онлайн у всех пользователей
             emit('online_users', {'users': list(online_users.keys())}, broadcast=True)
             break
 
@@ -131,14 +187,15 @@ def handle_user_join(data):
     username = data['username']
     online_users[username] = {'sid': request.sid}
     
-    # ОТПРАВЛЯЕМ новому пользователю текущий список онлайн
+    # Отправляем пользователю список онлайн и его группы
     emit('online_users', {'users': list(online_users.keys())}, room=request.sid)
-    
-    # Уведомляем всех о новом пользователе
     emit('user_joined', {'username': username}, broadcast=True)
-    
-    # ОБНОВЛЯЕМ список онлайн у всех пользователей
     emit('online_users', {'users': list(online_users.keys())}, broadcast=True)
+    
+    # Отправляем группы пользователя
+    user_groups_list = user_groups.get(username, [])
+    groups_data = [groups_db[group_id] for group_id in user_groups_list if group_id in groups_db]
+    emit('user_groups', {'groups': groups_data}, room=request.sid)
 
 @socketio.on('join_room')
 def handle_join_room(data):
@@ -149,27 +206,21 @@ def handle_join_room(data):
 def handle_message(data):
     room = data.get('room', 'general')
     
+    if room not in messages_db:
+        messages_db[room] = []
+    
     message = {
         'id': str(uuid.uuid4()),
         'username': data['username'],
         'text': data.get('text', ''),
         'file': data.get('file'),
+        'file_info': data.get('file_info'),
         'timestamp': datetime.now().isoformat(),
         'type': data.get('type', 'text'),
         'room': room
     }
     
-    # Сохраняем в нужную комнату
-    if room.startswith('private_'):
-        if room not in private_messages:
-            private_messages[room] = []
-        private_messages[room].append(message)
-    else:
-        if room not in messages_db:
-            messages_db[room] = []
-        messages_db[room].append(message)
-    
-    # Отправляем в комнату
+    messages_db[room].append(message)
     emit('new_message', message, room=room)
 
 @socketio.on('typing')
@@ -180,16 +231,36 @@ def handle_typing(data):
         'room': data.get('room', 'general')
     }, room=data.get('room', 'general'))
 
-# ЗВОНКИ
+# ЗВОНКИ КАК В WHATSAPP
 @socketio.on('start_call')
 def handle_start_call(data):
-    target_user = online_users.get(data.get('target'))
-    if target_user:
-        emit('incoming_call', {
-            'caller': data['username'],
-            'type': data.get('type', 'voice'),
-            'call_id': data.get('call_id')
-        }, room=target_user['sid'])
+    target = data.get('target')
+    call_type = data.get('type', 'voice')
+    call_id = data.get('call_id')
+    
+    if target.startswith('group_'):
+        # Групповой звонок
+        group = groups_db.get(target)
+        if group:
+            for member in group['members']:
+                if member != data['username'] and member in online_users:
+                    emit('incoming_call', {
+                        'caller': data['username'],
+                        'type': call_type,
+                        'call_id': call_id,
+                        'is_group': True,
+                        'group_name': group['name']
+                    }, room=online_users[member]['sid'])
+    else:
+        # Личный звонок
+        target_user = online_users.get(target)
+        if target_user:
+            emit('incoming_call', {
+                'caller': data['username'],
+                'type': call_type,
+                'call_id': call_id,
+                'is_group': False
+            }, room=target_user['sid'])
 
 @socketio.on('accept_call')
 def handle_accept_call(data):
@@ -216,10 +287,52 @@ def handle_end_call(data):
         'call_id': data.get('call_id')
     }, broadcast=True)
 
+# WebRTC для демонстрации экрана
+@socketio.on('webrtc_offer')
+def handle_webrtc_offer(data):
+    target = data.get('target')
+    if target.startswith('group_'):
+        group = groups_db.get(target)
+        if group:
+            for member in group['members']:
+                if member != data['caller'] and member in online_users:
+                    emit('webrtc_offer', data, room=online_users[member]['sid'])
+    else:
+        target_user = online_users.get(target)
+        if target_user:
+            emit('webrtc_offer', data, room=target_user['sid'])
+
+@socketio.on('webrtc_answer')
+def handle_webrtc_answer(data):
+    target_user = online_users.get(data['target_user'])
+    if target_user:
+        emit('webrtc_answer', data, room=target_user['sid'])
+
+@socketio.on('webrtc_ice_candidate')
+def handle_webrtc_ice_candidate(data):
+    target = data.get('target')
+    if target.startswith('group_'):
+        group = groups_db.get(target)
+        if group:
+            for member in group['members']:
+                if member != data['caller'] and member in online_users:
+                    emit('webrtc_ice_candidate', data, room=online_users[member]['sid'])
+    else:
+        target_user = online_users.get(data['target_user'])
+        if target_user:
+            emit('webrtc_ice_candidate', data, room=target_user['sid'])
+
 if __name__ == '__main__':
+    # Инициализируем глобальные чаты
+    for room_id, room_name in DEFAULT_ROOMS.items():
+        if room_id not in messages_db:
+            messages_db[room_id] = []
+    
     port = int(os.environ.get('PORT', 10000))
-    print("🚀 NoknowGram Messenger запущен!")
+    print("🚀 NoknowGram PRO запущен!")
     print(f"🌐 Порт: {port}")
-    print("💬 Личные сообщения: ВКЛ")
-    print("🔊 Звук звонков: ВКЛ")
+    print("💬 Группы: ВКЛ")
+    print("📞 Звонки WhatsApp-style: ВКЛ")
+    print("🖥️ Демонстрация экрана: ВКЛ")
+    print("📁 Telegram-style файлы: ВКЛ")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
