@@ -136,13 +136,13 @@
             font-size: 0.9em;
         }
 
-        .call-buttons {
+        .user-actions {
             display: flex;
             gap: 5px;
             margin-left: auto;
         }
 
-        .call-btn-small {
+        .action-btn {
             width: 28px;
             height: 28px;
             border: none;
@@ -156,7 +156,7 @@
             font-size: 0.8em;
         }
 
-        .call-btn-small:hover {
+        .action-btn:hover {
             background: var(--accent-primary);
         }
 
@@ -601,6 +601,10 @@
             background: var(--border-color);
             border-radius: 3px;
         }
+
+        .private-chat-indicator {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%) !important;
+        }
     </style>
 </head>
 <body>
@@ -626,7 +630,7 @@
             </div>
 
             <div class="rooms">
-                <h4>Комнаты чата</h4>
+                <h4>Чаты</h4>
                 <div class="room-list" id="roomList">
                     <div class="room-item active" data-room="general">
                         <div class="room-avatar">💬</div>
@@ -749,6 +753,10 @@
                 this.currentCallType = null;
                 this.currentCallId = null;
                 this.targetUser = null;
+                this.callSound = null;
+                
+                // Личные чаты
+                this.privateRooms = new Map();
                 
                 this.init();
             }
@@ -871,18 +879,16 @@
                 });
 
                 this.socket.on('call_rejected', (data) => {
-                this.handleCallRejected(data.rejected_by);
+                    this.handleCallRejected(data.rejected_by);
                 });
 
-                // ⭐⭐ ПРАВИЛЬНО - ДОБАВЬТЕ ЗДЕСЬ: ⭐⭐
-                this.socket.on('call_accepted', (data) => {
-                this.handleCallAccepted(data.accepted_by, data.call_id);
+                this.socket.on('call_ended', (data) => {
+                    this.handleCallEnded(data.ended_by);
                 });
-                // ⭐⭐ КОНЕЦ ДОБАВЛЕНИЯ ⭐⭐
 
                 // WebRTC signaling
                 this.socket.on('webrtc_offer', (data) => {
-                this.handleWebRTCOffer(data.offer, data.caller, data.call_id);
+                    this.handleWebRTCOffer(data.offer, data.caller, data.call_id);
                 });
 
                 this.socket.on('webrtc_answer', (data) => {
@@ -944,6 +950,289 @@
                 });
             }
 
+            // ЗВОНКИ С ЗВУКОМ
+            startCall(targetUser, type) {
+                if (this.isInCall) return;
+                
+                this.targetUser = targetUser;
+                this.currentCallType = type;
+                this.isCaller = true;
+                this.currentCallId = 'call_' + Date.now();
+
+                // Воспроизводим звук исходящего звонка
+                this.playCallSound('outgoing');
+
+                // Показываем окно звонка
+                this.showCallWindow(`Звонок ${targetUser}`, 'Звонок...');
+                this.callWith.textContent = `С: ${targetUser}`;
+
+                // Отправляем запрос на звонок КОНКРЕТНОМУ пользователю
+                this.socket.emit('start_call', {
+                    username: this.currentUser.username,
+                    target: targetUser,
+                    type: type,
+                    call_id: this.currentCallId
+                });
+
+                // Таймаут для автоматического завершения, если нет ответа
+                this.callTimeout = setTimeout(() => {
+                    if (this.isInCall && this.isCaller) {
+                        this.addSystemMessage(`❌ ${targetUser} не ответил на звонок`);
+                        this.endCall();
+                    }
+                }, 30000); // 30 секунд
+            }
+
+            handleIncomingCall(caller, type, call_id) {
+                if (this.isInCall) {
+                    // Автоматически отклоняем, если уже в звонке
+                    this.socket.emit('reject_call', {
+                        username: this.currentUser.username,
+                        caller: caller,
+                        call_id: call_id
+                    });
+                    return;
+                }
+
+                this.currentCaller = caller;
+                this.currentCallType = type;
+                this.currentCallId = call_id;
+
+                // Воспроизводим звук входящего звонка
+                this.playCallSound('incoming');
+
+                this.callerName.textContent = `Входящий звонок от ${caller}`;
+                this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
+                this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
+                this.incomingCallModal.classList.add('active');
+            }
+
+            playCallSound(type) {
+                // Останавливаем предыдущий звук
+                if (this.callSound) {
+                    this.callSound.pause();
+                    this.callSound = null;
+                }
+
+                // Создаем звук звонка
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                if (type === 'incoming') {
+                    // Звонок входящий - прерывистый
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+                    
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.5);
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1.0);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime + 1.5);
+                    
+                    oscillator.start();
+                    oscillator.stop(audioContext.currentTime + 4);
+                } else {
+                    // Звонок исходящий - непрерывный
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                    oscillator.start();
+                    
+                    // Сохраняем для остановки
+                    this.callSound = {
+                        oscillator: oscillator,
+                        context: audioContext
+                    };
+                }
+            }
+
+            stopCallSound() {
+                if (this.callSound) {
+                    if (this.callSound.oscillator) {
+                        this.callSound.oscillator.stop();
+                    }
+                    if (this.callSound.context) {
+                        this.callSound.context.close();
+                    }
+                    this.callSound = null;
+                }
+            }
+
+            acceptCall() {
+                this.incomingCallModal.classList.remove('active');
+                this.isInCall = true;
+                
+                // Останавливаем звук входящего звонка
+                this.stopCallSound();
+                
+                this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
+                this.callWith.textContent = `С: ${this.currentCaller}`;
+                this.startCallTimer();
+
+                // Уведомляем звонящего, что звонок принят
+                this.socket.emit('accept_call', {
+                    username: this.currentUser.username,
+                    caller: this.currentCaller,
+                    call_id: this.currentCallId
+                });
+
+                this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
+            }
+
+            rejectCall() {
+                this.incomingCallModal.classList.remove('active');
+                
+                // Останавливаем звук
+                this.stopCallSound();
+                
+                this.socket.emit('reject_call', {
+                    username: this.currentUser.username,
+                    caller: this.currentCaller,
+                    call_id: this.currentCallId
+                });
+
+                this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
+                this.resetCallData();
+            }
+
+            handleCallAccepted(acceptedBy, call_id) {
+                if (this.isCaller && this.currentCallId === call_id) {
+                    // Останавливаем звук исходящего звонка
+                    this.stopCallSound();
+                    
+                    this.callStatus.textContent = 'Соединение установлено';
+                    this.startCallTimer();
+                    this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
+                    
+                    // Очищаем таймаут ожидания
+                    if (this.callTimeout) {
+                        clearTimeout(this.callTimeout);
+                        this.callTimeout = null;
+                    }
+                }
+            }
+
+            handleCallRejected(rejectedBy) {
+                if (this.isCaller) {
+                    // Останавливаем звук
+                    this.stopCallSound();
+                    
+                    this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
+                    this.endCall();
+                }
+            }
+
+            handleCallEnded(endedBy) {
+                if (this.isInCall) {
+                    // Останавливаем звук
+                    this.stopCallSound();
+                    
+                    this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
+                    this.endCall();
+                }
+            }
+
+            showCallWindow(title, status) {
+                this.callTitle.textContent = title;
+                this.callStatus.textContent = status;
+                this.callWindow.classList.add('active');
+                this.videoPlaceholder.style.display = 'flex';
+                this.isInCall = true;
+            }
+
+            startCallTimer() {
+                this.callStartTime = new Date();
+                this.updateCallTimer();
+                
+                this.callTimerInterval = setInterval(() => {
+                    this.updateCallTimer();
+                }, 1000);
+            }
+
+            updateCallTimer() {
+                if (this.callStartTime) {
+                    const now = new Date();
+                    const diff = Math.floor((now - this.callStartTime) / 1000);
+                    const minutes = Math.floor(diff / 60);
+                    const seconds = diff % 60;
+                    this.callTimer.textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+
+            toggleMute() {
+                this.addSystemMessage(this.callMuteBtn.classList.contains('mute') ? '🎤 Микрофон включен' : '🎤 Микрофон выключен');
+                this.callMuteBtn.classList.toggle('mute');
+            }
+
+            toggleVideo() {
+                this.addSystemMessage(this.callVideoBtn.classList.contains('video-off') ? '📹 Камера включена' : '📹 Камера выключена');
+                this.callVideoBtn.classList.toggle('video-off');
+            }
+
+            endCall() {
+                this.isInCall = false;
+                this.isCaller = false;
+                
+                // Останавливаем звук
+                this.stopCallSound();
+                
+                if (this.callTimerInterval) {
+                    clearInterval(this.callTimerInterval);
+                    this.callTimerInterval = null;
+                }
+                
+                if (this.callTimeout) {
+                    clearTimeout(this.callTimeout);
+                    this.callTimeout = null;
+                }
+
+                this.callWindow.classList.remove('active');
+                this.incomingCallModal.classList.remove('active');
+
+                if (this.currentCallId) {
+                    this.socket.emit('end_call', {
+                        username: this.currentUser.username,
+                        call_id: this.currentCallId
+                    });
+                }
+
+                this.resetCallData();
+            }
+
+            resetCallData() {
+                this.currentCaller = null;
+                this.targetUser = null;
+                this.currentCallId = null;
+                this.currentCallType = null;
+            }
+
+            // ЛИЧНЫЕ СООБЩЕНИЯ
+            createPrivateRoom(targetUser) {
+                const roomName = `private_${[this.currentUser.username, targetUser].sort().join('_')}`;
+                
+                // Добавляем комнату в список, если её нет
+                if (!this.privateRooms.has(roomName)) {
+                    this.privateRooms.set(roomName, targetUser);
+                    
+                    const roomItem = document.createElement('div');
+                    roomItem.className = 'room-item private-chat-indicator';
+                    roomItem.dataset.room = roomName;
+                    roomItem.innerHTML = `
+                        <div class="room-avatar">💬</div>
+                        <div>${targetUser}</div>
+                    `;
+                    
+                    this.roomList.appendChild(roomItem);
+                }
+                
+                return roomName;
+            }
+
             switchRoom(room) {
                 document.querySelectorAll('.room-item').forEach(item => {
                     item.classList.remove('active');
@@ -953,15 +1242,53 @@
                 this.currentRoom = room;
                 this.currentRoomElement.textContent = this.getRoomName(room);
                 this.loadRoomMessages();
+                
+                // Присоединяемся к комнате на сервере
+                this.socket.emit('join_room', { room: room });
             }
 
             getRoomName(room) {
+                if (room.startsWith('private_')) {
+                    const users = room.replace('private_', '').split('_');
+                    const otherUser = users.find(user => user !== this.currentUser.username);
+                    return `💬 ${otherUser}`;
+                }
+                
                 const rooms = {
                     'general': 'Общий чат',
                     'friends': 'Друзья', 
                     'work': 'Работа'
                 };
                 return rooms[room] || room;
+            }
+
+            updateOnlineUsers(users) {
+                this.onlineUsers.innerHTML = '';
+                this.onlineCount.textContent = `${users.length} пользователей онлайн`;
+
+                users.forEach(username => {
+                    if (username !== this.currentUser.username) {
+                        const userElement = document.createElement('div');
+                        userElement.className = 'user-item';
+                        userElement.innerHTML = `
+                            <div class="user-avatar">${username.charAt(0).toUpperCase()}</div>
+                            <div>${username}</div>
+                            <div class="user-actions">
+                                <button class="action-btn" onclick="chatApp.startPrivateChat('${username}')">💬</button>
+                                <button class="action-btn" onclick="chatApp.startCall('${username}', 'voice')">📞</button>
+                                <button class="action-btn" onclick="chatApp.startCall('${username}', 'video')">📹</button>
+                            </div>
+                            <div class="user-status-indicator"></div>
+                        `;
+                        this.onlineUsers.appendChild(userElement);
+                    }
+                });
+            }
+
+            startPrivateChat(targetUser) {
+                const roomName = this.createPrivateRoom(targetUser);
+                this.switchRoom(roomName);
+                this.addSystemMessage(`💬 Начат личный чат с ${targetUser}`);
             }
 
             sendMessage() {
@@ -1014,325 +1341,11 @@
                 this.fileInput.value = '';
             }
 
-            // ЗВОНКИ - ИСПРАВЛЕННАЯ ВЕРСИЯ
-startCall(targetUser, type) {
-    if (this.isInCall) return;
-    
-    this.targetUser = targetUser;
-    this.currentCallType = type;
-    this.isCaller = true;
-    this.currentCallId = 'call_' + Date.now();
-
-    // Показываем окно звонка
-    this.showCallWindow(`Звонок ${targetUser}`, 'Звонок...');
-    this.callWith.textContent = `С: ${targetUser}`;
-
-    // Отправляем запрос на звонок КОНКРЕТНОМУ пользователю
-    this.socket.emit('start_call', {
-        username: this.currentUser.username,
-        target: targetUser,
-        type: type,
-        call_id: this.currentCallId
-    });
-
-    // Таймаут для автоматического завершения, если нет ответа
-    this.callTimeout = setTimeout(() => {
-        if (this.isInCall && this.isCaller) {
-            this.addSystemMessage(`❌ ${targetUser} не ответил на звонок`);
-            this.endCall();
-        }
-    }, 30000); // 30 секунд
-}
-
-handleIncomingCall(caller, type, call_id) {
-    if (this.isInCall) {
-        // Автоматически отклоняем, если уже в звонке
-        this.socket.emit('reject_call', {
-            username: this.currentUser.username,
-            caller: caller,
-            call_id: call_id
-        });
-        return;
-    }
-
-    this.currentCaller = caller;
-    this.currentCallType = type;
-    this.currentCallId = call_id;
-
-    this.callerName.textContent = `Входящий звонок от ${caller}`;
-    this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
-    this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
-    this.incomingCallModal.classList.add('active');
-}
-
-acceptCall() {
-    this.incomingCallModal.classList.remove('active');
-    this.isInCall = true;
-    
-    this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
-    this.callWith.textContent = `С: ${this.currentCaller}`;
-    this.startCallTimer();
-
-    // Уведомляем звонящего, что звонок принят
-    this.socket.emit('accept_call', {
-        username: this.currentUser.username,
-        caller: this.currentCaller,
-        call_id: this.currentCallId
-    });
-
-    this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
-}
-
-rejectCall() {
-    this.incomingCallModal.classList.remove('active');
-    
-    this.socket.emit('reject_call', {
-        username: this.currentUser.username,
-        caller: this.currentCaller,
-        call_id: this.currentCallId
-    });
-
-    this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
-    this.resetCallData();
-}
-
-handleCallAccepted(acceptedBy, call_id) {
-    if (this.isCaller && this.currentCallId === call_id) {
-        this.callStatus.textContent = 'Соединение установлено';
-        this.startCallTimer();
-        this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
-        
-        // Очищаем таймаут ожидания
-        if (this.callTimeout) {
-            clearTimeout(this.callTimeout);
-            this.callTimeout = null;
-        }
-    }
-}
-
-handleCallRejected(rejectedBy) {
-    if (this.isCaller) {
-        this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
-        this.endCall();
-    }
-}
-
-handleCallEnded(endedBy) {
-    if (this.isInCall) {
-        this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
-        this.endCall();
-    }
-}
-
-endCall() {
-    this.isInCall = false;
-    this.isCaller = false;
-    
-    if (this.callTimerInterval) {
-        clearInterval(this.callTimerInterval);
-        this.callTimerInterval = null;
-    }
-    
-    if (this.callTimeout) {
-        clearTimeout(this.callTimeout);
-        this.callTimeout = null;
-    }
-
-    this.callWindow.classList.remove('active');
-    this.incomingCallModal.classList.remove('active');
-
-    if (this.currentCallId) {
-        this.socket.emit('end_call', {
-            username: this.currentUser.username,
-            call_id: this.currentCallId
-        });
-    }
-
-    this.resetCallData();
-}
-
-resetCallData() {
-    this.currentCaller = null;
-    this.targetUser = null;
-    this.currentCallId = null;
-    this.currentCallType = null;
-}
-
-            handleIncomingCall(caller, type, call_id) {
-                if (this.isInCall) return;
-
-                this.currentCaller = caller;
-                this.currentCallType = type;
-                this.currentCallId = call_id;
-
-                this.callerName.textContent = `Входящий звонок от ${caller}`;
-                this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
-                this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
-                this.incomingCallModal.classList.add('active');
-            }
-
-            acceptCall() {
-                this.incomingCallModal.classList.remove('active');
-                this.isInCall = true;
-                
-                this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение установлено');
-                this.callWith.textContent = `С: ${this.currentCaller}`;
-                this.startCallTimer();
-
-                // Уведомляем звонящего
-                this.socket.emit('accept_call', {
-                    username: this.currentUser.username,
-                    caller: this.currentCaller,
-                    call_id: this.currentCallId
-                });
-
-                this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
-            }
-
-            rejectCall() {
-                this.incomingCallModal.classList.remove('active');
-                
-                this.socket.emit('reject_call', {
-                    username: this.currentUser.username,
-                    caller: this.currentCaller,
-                    call_id: this.currentCallId
-                });
-
-                this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
-                this.currentCaller = null;
-                this.currentCallId = null;
-            }
-
-            handleCallAccepted(acceptedBy, call_id) {
-                if (this.isCaller && this.currentCallId === call_id) {
-                    this.callStatus.textContent = 'Соединение установлено';
-                    this.startCallTimer();
-                    this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
-                }
-            }
-
-            handleCallRejected(rejectedBy) {
-                if (this.isCaller) {
-                    this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
-                    this.endCall();
-                }
-            }
-
-            showCallWindow(title, status) {
-                this.callTitle.textContent = title;
-                this.callStatus.textContent = status;
-                this.callWindow.classList.add('active');
-                this.videoPlaceholder.style.display = 'flex';
-                this.isInCall = true;
-            }
-
-            startCallTimer() {
-                this.callStartTime = new Date();
-                this.updateCallTimer();
-                
-                this.callTimerInterval = setInterval(() => {
-                    this.updateCallTimer();
-                }, 1000);
-            }
-
-            updateCallTimer() {
-                if (this.callStartTime) {
-                    const now = new Date();
-                    const diff = Math.floor((now - this.callStartTime) / 1000);
-                    const minutes = Math.floor(diff / 60);
-                    const seconds = diff % 60;
-                    this.callTimer.textContent = 
-                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                }
-            }
-
-            toggleMute() {
-                this.addSystemMessage(this.callMuteBtn.classList.contains('mute') ? '🎤 Микрофон включен' : '🎤 Микрофон выключен');
-                this.callMuteBtn.classList.toggle('mute');
-            }
-
-            toggleVideo() {
-                this.addSystemMessage(this.callVideoBtn.classList.contains('video-off') ? '📹 Камера включена' : '📹 Камера выключена');
-                this.callVideoBtn.classList.toggle('video-off');
-            }
-
-            endCall() {
-                this.isInCall = false;
-                this.isCaller = false;
-                
-                if (this.callTimerInterval) {
-                    clearInterval(this.callTimerInterval);
-                    this.callTimerInterval = null;
-                }
-
-                this.callWindow.classList.remove('active');
-                this.incomingCallModal.classList.remove('active');
-
-                if (this.currentCallId) {
-                    this.socket.emit('end_call', {
-                        username: this.currentUser.username,
-                        call_id: this.currentCallId
-                    });
-                }
-
-                if (this.currentCaller) {
-                    this.addSystemMessage(`📞 Звонок с ${this.currentCaller} завершен`);
-                } else if (this.targetUser) {
-                    this.addSystemMessage(`📞 Звонок с ${this.targetUser} завершен`);
-                }
-
-                this.currentCaller = null;
-                this.targetUser = null;
-                this.currentCallId = null;
-            }
-
-            handleCallEnded(endedBy) {
-                if (this.isInCall) {
-                    this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
-                    this.endCall();
-                }
-            }
-
-            // WebRTC handlers (упрощенные)
-            handleWebRTCOffer(offer, caller, call_id) {
-                // Для демо - просто принимаем оффер
-                console.log('Received WebRTC offer from:', caller);
-            }
-
-            handleWebRTCAnswer(answer, call_id) {
-                console.log('Received WebRTC answer');
-            }
-
-            handleWebRTCIceCandidate(candidate, call_id) {
-                console.log('Received ICE candidate');
-            }
-
-            updateOnlineUsers(users) {
-                this.onlineUsers.innerHTML = '';
-                this.onlineCount.textContent = `${users.length} пользователей онлайн`;
-
-                users.forEach(username => {
-                    if (username !== this.currentUser.username) {
-                        const userElement = document.createElement('div');
-                        userElement.className = 'user-item';
-                        userElement.innerHTML = `
-                            <div class="user-avatar">${username.charAt(0).toUpperCase()}</div>
-                            <div>${username}</div>
-                            <div class="call-buttons">
-                                <button class="call-btn-small" onclick="chatApp.startCall('${username}', 'voice')">📞</button>
-                                <button class="call-btn-small" onclick="chatApp.startCall('${username}', 'video')">📹</button>
-                            </div>
-                            <div class="user-status-indicator"></div>
-                        `;
-                        this.onlineUsers.appendChild(userElement);
-                    }
-                });
-            }
-
             handleTyping() {
                 this.socket.emit('typing', {
                     username: this.currentUser.username,
-                    is_typing: true
+                    is_typing: true,
+                    room: this.currentRoom
                 });
 
                 clearTimeout(this.typingTimer);
@@ -1344,7 +1357,8 @@ resetCallData() {
             stopTyping() {
                 this.socket.emit('typing', {
                     username: this.currentUser.username,
-                    is_typing: false
+                    is_typing: false,
+                    room: this.currentRoom
                 });
             }
 
@@ -1435,6 +1449,19 @@ resetCallData() {
 
             scrollToBottom() {
                 this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+            }
+
+            // WebRTC handlers
+            handleWebRTCOffer(offer, caller, call_id) {
+                console.log('Received WebRTC offer from:', caller);
+            }
+
+            handleWebRTCAnswer(answer, call_id) {
+                console.log('Received WebRTC answer');
+            }
+
+            handleWebRTCIceCandidate(candidate, call_id) {
+                console.log('Received ICE candidate');
             }
         }
 
