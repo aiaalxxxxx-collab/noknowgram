@@ -147,14 +147,73 @@ def handle_typing(data):
         'username': data['username'],
         'is_typing': data['is_typing']
     }, broadcast=True)
-
-# Упрощенные звонки (только уведомления)
+# WebRTC signaling - ИСПРАВЛЕННЫЕ ЗВОНКИ
 @socketio.on('start_call')
 def handle_start_call(data):
-    emit('incoming_call', {
-        'caller': data['username'],
-        'type': data.get('type', 'voice')
+    # Отправляем только конкретному пользователю
+    target_user = online_users.get(data.get('target'))
+    if target_user:
+        emit('incoming_call', {
+            'caller': data['username'],
+            'type': data.get('type', 'voice'),
+            'call_id': data.get('call_id')
+        }, room=target_user['sid'])
+
+@socketio.on('accept_call')
+def handle_accept_call(data):
+    # Уведомляем звонящего, что звонок принят
+    caller_user = online_users.get(data['caller'])
+    if caller_user:
+        emit('call_accepted', {
+            'accepted_by': data['username'],
+            'call_id': data['call_id']
+        }, room=caller_user['sid'])
+
+@socketio.on('reject_call')
+def handle_reject_call(data):
+    # Уведомляем звонящего, что звонок отклонен
+    caller_user = online_users.get(data['caller'])
+    if caller_user:
+        emit('call_rejected', {
+            'rejected_by': data['username'],
+            'call_id': data['call_id']
+        }, room=caller_user['sid'])
+
+@socketio.on('end_call')
+def handle_end_call(data):
+    emit('call_ended', {
+        'ended_by': data['username'],
+        'call_id': data.get('call_id')
     }, broadcast=True)
+
+# WebRTC signaling для передачи медиа-данных
+@socketio.on('webrtc_offer')
+def handle_webrtc_offer(data):
+    target_user = online_users.get(data['target_user'])
+    if target_user:
+        emit('webrtc_offer', {
+            'offer': data['offer'],
+            'caller': data['caller'],
+            'call_id': data['call_id']
+        }, room=target_user['sid'])
+
+@socketio.on('webrtc_answer')
+def handle_webrtc_answer(data):
+    target_user = online_users.get(data['target_user'])
+    if target_user:
+        emit('webrtc_answer', {
+            'answer': data['answer'],
+            'call_id': data['call_id']
+        }, room=target_user['sid'])
+
+@socketio.on('webrtc_ice_candidate')
+def handle_webrtc_ice_candidate(data):
+    target_user = online_users.get(data['target_user'])
+    if target_user:
+        emit('webrtc_ice_candidate', {
+            'candidate': data['candidate'],
+            'call_id': data['call_id']
+        }, room=target_user['sid'])
 
 @socketio.on('end_call')
 def handle_end_call(data):
