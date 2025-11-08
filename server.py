@@ -4,7 +4,6 @@ from flask_socketio import SocketIO, emit, join_room
 from datetime import datetime
 import hashlib
 import uuid
-import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'noknowgram-simple-secret'
@@ -19,13 +18,12 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 users_db = {}
 messages_db = {
     'general': [],
-    'friends': [],
+    'friends': [], 
     'work': []
 }
-private_messages = {}  # Для личных сообщений: {'user1_user2': [messages]}
+private_messages = {}
 online_users = {}
 
-# Главная страница
 @app.route('/')
 def serve_index():
     return send_file('index.html')
@@ -34,7 +32,6 @@ def serve_index():
 def serve_chat():
     return send_file('chat.html')
 
-# Статические файлы
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory('.', path)
@@ -121,18 +118,32 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    for username, data in online_users.items():
+    for username, data in list(online_users.items()):
         if data.get('sid') == request.sid:
             del online_users[username]
             emit('user_left', {'username': username}, broadcast=True)
+            # ОБНОВЛЯЕМ список онлайн у всех пользователей
+            emit('online_users', {'users': list(online_users.keys())}, broadcast=True)
             break
 
 @socketio.on('user_join')
 def handle_user_join(data):
     username = data['username']
     online_users[username] = {'sid': request.sid}
+    
+    # ОТПРАВЛЯЕМ новому пользователю текущий список онлайн
+    emit('online_users', {'users': list(online_users.keys())}, room=request.sid)
+    
+    # Уведомляем всех о новом пользователе
     emit('user_joined', {'username': username}, broadcast=True)
+    
+    # ОБНОВЛЯЕМ список онлайн у всех пользователей
     emit('online_users', {'users': list(online_users.keys())}, broadcast=True)
+
+@socketio.on('join_room')
+def handle_join_room(data):
+    room = data.get('room', 'general')
+    join_room(room)
 
 @socketio.on('send_message')
 def handle_message(data):
@@ -161,11 +172,6 @@ def handle_message(data):
     # Отправляем в комнату
     emit('new_message', message, room=room)
 
-@socketio.on('join_room')
-def handle_join_room(data):
-    room = data.get('room', 'general')
-    join_room(room)
-
 @socketio.on('typing')
 def handle_typing(data):
     emit('user_typing', {
@@ -174,7 +180,7 @@ def handle_typing(data):
         'room': data.get('room', 'general')
     }, room=data.get('room', 'general'))
 
-# ЗВОНКИ С ЗВУКОМ
+# ЗВОНКИ
 @socketio.on('start_call')
 def handle_start_call(data):
     target_user = online_users.get(data.get('target'))
@@ -184,11 +190,6 @@ def handle_start_call(data):
             'type': data.get('type', 'voice'),
             'call_id': data.get('call_id')
         }, room=target_user['sid'])
-        # Уведомление о начале звонка
-        emit('call_started', {
-            'caller': data['username'],
-            'target': data.get('target')
-        }, broadcast=True)
 
 @socketio.on('accept_call')
 def handle_accept_call(data):
