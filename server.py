@@ -1,3 +1,4 @@
+# ВСТАВЬТЕ ВЕСЬ ЭТОТ КОД В server.py ВМЕСТО СТАРОГО
 import os
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_socketio import SocketIO, emit, join_room
@@ -9,7 +10,6 @@ import json
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'noknowgram-simple-secret'
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -25,9 +25,12 @@ user_groups = {}
 # Глобальные чаты
 DEFAULT_ROOMS = {
     'general': '🌍 Главный чат',
-    'random': '🎮 Развлечения',
+    'random': '🎮 Развлечения', 
     'help': '❓ Помощь'
 }
+
+# WebRTC пары (call_id -> данные)
+webrtc_sessions = {}
 
 @app.route('/')
 def serve_index():
@@ -119,7 +122,7 @@ def get_user_groups(username):
     groups_data = [groups_db[group_id] for group_id in user_groups_list if group_id in groups_db]
     return jsonify({'groups': groups_data})
 
-# Загрузка файлов (поддержка всех типов как в Telegram)
+# Загрузка файлов
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -231,7 +234,7 @@ def handle_typing(data):
         'room': data.get('room', 'general')
     }, room=data.get('room', 'general'))
 
-# ЗВОНКИ КАК В WHATSAPP
+# ЗВОНКИ
 @socketio.on('start_call')
 def handle_start_call(data):
     target = data.get('target')
@@ -287,40 +290,91 @@ def handle_end_call(data):
         'call_id': data.get('call_id')
     }, broadcast=True)
 
-# WebRTC для демонстрации экрана
+# WebRTC signaling - ПОЛНАЯ РЕАЛИЗАЦИЯ
 @socketio.on('webrtc_offer')
 def handle_webrtc_offer(data):
+    call_id = data.get('call_id')
     target = data.get('target')
+    
+    # Сохраняем оффер
+    if call_id not in webrtc_sessions:
+        webrtc_sessions[call_id] = {}
+    webrtc_sessions[call_id]['offer'] = data['offer']
+    
     if target.startswith('group_'):
+        # Групповой звонок
         group = groups_db.get(target)
         if group:
             for member in group['members']:
                 if member != data['caller'] and member in online_users:
-                    emit('webrtc_offer', data, room=online_users[member]['sid'])
+                    emit('webrtc_offer', {
+                        'offer': data['offer'],
+                        'caller': data['caller'],
+                        'call_id': call_id,
+                        'target': target
+                    }, room=online_users[member]['sid'])
     else:
+        # Личный звонок
         target_user = online_users.get(target)
         if target_user:
-            emit('webrtc_offer', data, room=target_user['sid'])
+            emit('webrtc_offer', {
+                'offer': data['offer'],
+                'caller': data['caller'],
+                'call_id': call_id
+            }, room=target_user['sid'])
 
 @socketio.on('webrtc_answer')
 def handle_webrtc_answer(data):
-    target_user = online_users.get(data['target_user'])
-    if target_user:
-        emit('webrtc_answer', data, room=target_user['sid'])
+    call_id = data.get('call_id')
+    
+    # Сохраняем ответ
+    if call_id in webrtc_sessions:
+        webrtc_sessions[call_id]['answer'] = data['answer']
+    
+    # Пересылаем звонящему
+    caller_user = online_users.get(data['caller'])
+    if caller_user:
+        emit('webrtc_answer', {
+            'answer': data['answer'],
+            'call_id': call_id
+        }, room=caller_user['sid'])
 
 @socketio.on('webrtc_ice_candidate')
 def handle_webrtc_ice_candidate(data):
+    call_id = data.get('call_id')
     target = data.get('target')
+    
     if target.startswith('group_'):
+        # Групповой звонок
         group = groups_db.get(target)
         if group:
             for member in group['members']:
                 if member != data['caller'] and member in online_users:
-                    emit('webrtc_ice_candidate', data, room=online_users[member]['sid'])
+                    emit('webrtc_ice_candidate', {
+                        'candidate': data['candidate'],
+                        'call_id': call_id,
+                        'caller': data['caller']
+                    }, room=online_users[member]['sid'])
     else:
+        # Личный звонок
         target_user = online_users.get(data['target_user'])
         if target_user:
-            emit('webrtc_ice_candidate', data, room=target_user['sid'])
+            emit('webrtc_ice_candidate', {
+                'candidate': data['candidate'],
+                'call_id': call_id,
+                'caller': data['caller']
+            }, room=target_user['sid'])
+
+@socketio.on('webrtc_end_call')
+def handle_webrtc_end_call(data):
+    call_id = data.get('call_id')
+    # Очищаем сессию
+    if call_id in webrtc_sessions:
+        del webrtc_sessions[call_id]
+    
+    emit('webrtc_call_ended', {
+        'call_id': call_id
+    }, broadcast=True)
 
 if __name__ == '__main__':
     # Инициализируем глобальные чаты
@@ -329,10 +383,9 @@ if __name__ == '__main__':
             messages_db[room_id] = []
     
     port = int(os.environ.get('PORT', 10000))
-    print("🚀 NoknowGram PRO запущен!")
+    print("🚀 NoknowGram PRO с видеозвонками запущен!")
     print(f"🌐 Порт: {port}")
-    print("💬 Группы: ВКЛ")
-    print("📞 Звонки WhatsApp-style: ВКЛ")
+    print("📞 WebRTC видеозвонки: ВКЛ")
+    print("👥 Групповые звонки: ВКЛ")
     print("🖥️ Демонстрация экрана: ВКЛ")
-    print("📁 Telegram-style файлы: ВКЛ")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
