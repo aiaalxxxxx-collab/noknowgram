@@ -956,7 +956,7 @@
         <div class="call-controls-bottom">
             <button class="call-control-btn" id="callMuteBtn">🎤</button>
             <button class="call-control-btn" id="callVideoBtn">📹</button>
-            <button class="call-control-btn screen-share" id="screenShareBtn">🖥️</button>
+            <button class="call-control-btn screen-share" id="screenShareCallBtn">🖥️</button>
             <button class="call-control-btn end-call" id="callEndBtn">📞</button>
         </div>
     </div>
@@ -976,917 +976,1158 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script>
-class ChatApp {
-    constructor() {
-        this.currentUser = null;
-        this.currentRoom = null;
-        this.socket = null;
-        this.typingTimer = null;
-        this.typingUsers = new Set();
-        
-        // Звонки
-        this.peerConnection = null;
-        this.localStream = null;
-        this.remoteStream = null;
-        this.isInCall = false;
-        this.isCaller = false;
-        this.callStartTime = null;
-        this.callTimerInterval = null;
-        this.currentCaller = null;
-        this.currentCallType = null;
-        this.currentCallId = null;
-        this.targetUser = null;
-        this.callSound = null;
-        this.isScreenSharing = false;
-        
-        // Данные
-        this.onlineUsers = [];
-        this.userGroups = [];
-        this.selectedUsers = new Set();
-        
-        this.init();
-    }
-
-    init() {
-        this.checkAuth();
-        this.setupElements();
-        this.connectSocket();
-        this.bindEvents();
-        this.loadGlobalChats();
-    }
-
-    checkAuth() {
-        const userData = localStorage.getItem('currentUser');
-        if (!userData) {
-            window.location.href = '/';
-            return;
-        }
-        this.currentUser = JSON.parse(userData);
-        this.displayUserInfo();
-    }
-
-    displayUserInfo() {
-        document.getElementById('userName').textContent = this.currentUser.username;
-        document.getElementById('userAvatar').textContent = this.currentUser.username.charAt(0).toUpperCase();
-    }
-
-    setupElements() {
-        // Основные элементы
-        this.messageInput = document.getElementById('messageInput');
-        this.sendBtn = document.getElementById('sendBtn');
-        this.messagesContainer = document.getElementById('messagesContainer');
-        this.currentRoomElement = document.getElementById('currentRoom');
-        this.onlineCount = document.getElementById('onlineCount');
-        this.typingIndicator = document.getElementById('typingIndicator');
-        this.fileInput = document.getElementById('fileInput');
-        this.logoutBtn = document.getElementById('logoutBtn');
-        
-        // Чats
-        this.globalChats = document.getElementById('globalChats');
-        this.groupChats = document.getElementById('groupChats');
-        this.privateChats = document.getElementById('privateChats');
-        
-        // Звонки
-        this.callWindow = document.getElementById('callWindow');
-        this.callTitle = document.getElementById('callTitle');
-        this.callStatus = document.getElementById('callStatus');
-        this.remoteVideo = document.getElementById('remoteVideo');
-        this.localVideo = document.getElementById('localVideo');
-        this.videoPlaceholder = document.getElementById('videoPlaceholder');
-        this.callTimer = document.getElementById('callTimer');
-        this.callWith = document.getElementById('callWith');
-        this.callMuteBtn = document.getElementById('callMuteBtn');
-        this.callVideoBtn = document.getElementById('callVideoBtn');
-        this.callEndBtn = document.getElementById('callEndBtn');
-        this.voiceCallBtn = document.getElementById('voiceCallBtn');
-        this.videoCallBtn = document.getElementById('videoCallBtn');
-        this.screenShareBtn = document.getElementById('screenShareBtn');
-        
-        // Входящий звонок
-        this.incomingCallModal = document.getElementById('incomingCallModal');
-        this.callerName = document.getElementById('callerName');
-        this.callerAvatar = document.getElementById('callerAvatar');
-        this.callType = document.getElementById('callType');
-        this.acceptCallBtn = document.getElementById('acceptCallBtn');
-        this.rejectCallBtn = document.getElementById('rejectCallBtn');
-        
-        // Группы
-        this.createGroupModal = document.getElementById('createGroupModal');
-        this.createGroupBtn = document.getElementById('createGroupBtn');
-        this.addGroupBtn = document.getElementById('addGroupBtn');
-        this.groupNameInput = document.getElementById('groupNameInput');
-        this.userSelector = document.getElementById('userSelector');
-        this.cancelGroupBtn = document.getElementById('cancelGroupBtn');
-        this.confirmGroupBtn = document.getElementById('confirmGroupBtn');
-    }
-
-    connectSocket() {
-        this.socket = io();
-
-        this.socket.on('connect', () => {
-            console.log('Connected to server');
-            this.socket.emit('user_join', { username: this.currentUser.username });
-        });
-
-        this.socket.on('user_joined', (data) => {
-            this.addSystemMessage(`Пользователь ${data.username} присоединился`);
-        });
-
-        this.socket.on('user_left', (data) => {
-            this.addSystemMessage(`Пользователь ${data.username} вышел`);
-        });
-
-        this.socket.on('online_users', (data) => {
-            this.onlineUsers = data.users;
-            this.updateOnlineUsers();
-            this.updateUserSelector();
-        });
-
-        this.socket.on('user_groups', (data) => {
-            this.userGroups = data.groups;
-            this.updateGroupChats();
-        });
-
-        this.socket.on('new_message', (data) => {
-            if (data.room === this.currentRoom) {
-                this.addMessage(data.username, data.text, data.username === this.currentUser.username, 
-                              data.timestamp, data.file, data.type, data.file_info);
-            }
-        });
-
-        this.socket.on('user_typing', (data) => {
-            if (data.room === this.currentRoom) {
-                this.handleTypingIndicator(data.username, data.is_typing);
-            }
-        });
-
-        // Звонки
-        this.socket.on('incoming_call', (data) => {
-            this.handleIncomingCall(data.caller, data.type, data.call_id, data.is_group, data.group_name);
-        });
-
-        this.socket.on('call_accepted', (data) => {
-            this.handleCallAccepted(data.accepted_by, data.call_id);
-        });
-
-        this.socket.on('call_rejected', (data) => {
-            this.handleCallRejected(data.rejected_by);
-        });
-
-        this.socket.on('call_ended', (data) => {
-            this.handleCallEnded(data.ended_by);
-        });
-    }
-
-    bindEvents() {
-        // Сообщения
-        this.sendBtn.addEventListener('click', () => this.sendMessage());
-        this.messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.sendMessage();
-            }
-        });
-        this.messageInput.addEventListener('input', () => {
-            this.handleTyping();
-            this.autoResizeTextarea();
-        });
-
-        // Файлы
-        this.fileInput.addEventListener('change', (e) => {
-            Array.from(e.target.files).forEach(file => this.uploadFile(file));
-        });
-
-        // Звонки
-        this.voiceCallBtn.addEventListener('click', () => this.startCall('voice'));
-        this.videoCallBtn.addEventListener('click', () => this.startCall('video'));
-        this.screenShareBtn.addEventListener('click', () => this.toggleScreenShare());
-        this.callMuteBtn.addEventListener('click', () => this.toggleMute());
-        this.callVideoBtn.addEventListener('click', () => this.toggleVideo());
-        this.callEndBtn.addEventListener('click', () => this.endCall());
-        this.acceptCallBtn.addEventListener('click', () => this.acceptCall());
-        this.rejectCallBtn.addEventListener('click', () => this.rejectCall());
-
-        // Группы
-        this.createGroupBtn.addEventListener('click', () => this.showCreateGroupModal());
-        this.addGroupBtn.addEventListener('click', () => this.showCreateGroupModal());
-        this.cancelGroupBtn.addEventListener('click', () => this.hideCreateGroupModal());
-        this.confirmGroupBtn.addEventListener('click', () => this.createGroup());
-
-        // Выход
-        this.logoutBtn.addEventListener('click', () => {
-            this.endCall();
-            localStorage.removeItem('currentUser');
-            window.location.href = '/';
-        });
-    }
-
-    // ГЛОБАЛЬНЫЕ ЧАТЫ
-    loadGlobalChats() {
-        const globalChats = [
-            { id: 'general', name: '🌍 Главный чат', avatar: '🌍', lastMessage: 'Общий чат для всех' },
-            { id: 'random', name: '🎮 Развлечения', avatar: '🎮', lastMessage: 'Игры, мемы и развлечения' },
-            { id: 'help', name: '❓ Помощь', avatar: '❓', lastMessage: 'Задавайте вопросы' }
-        ];
-
-        this.globalChats.innerHTML = '';
-        globalChats.forEach(chat => {
-            const chatItem = this.createChatItem(chat);
-            this.globalChats.appendChild(chatItem);
-        });
-    }
-
-    // ГРУППЫ
-    showCreateGroupModal() {
-        this.createGroupModal.classList.add('active');
-        this.groupNameInput.value = '';
-        this.selectedUsers.clear();
-        this.updateUserSelector();
-    }
-
-    hideCreateGroupModal() {
-        this.createGroupModal.classList.remove('active');
-    }
-
-    updateUserSelector() {
-        this.userSelector.innerHTML = '';
-        
-        this.onlineUsers.forEach(username => {
-            if (username !== this.currentUser.username) {
-                const userOption = document.createElement('div');
-                userOption.className = 'user-option';
-                userOption.innerHTML = `
-                    <div class="avatar" style="width: 30px; height: 30px; font-size: 0.9em;">
-                        ${username.charAt(0).toUpperCase()}
-                    </div>
-                    <div>${username}</div>
-                    <div class="online-indicator"></div>
-                `;
+        class ChatApp {
+            constructor() {
+                this.currentUser = null;
+                this.currentRoom = null;
+                this.socket = null;
+                this.typingTimer = null;
+                this.typingUsers = new Set();
                 
-                userOption.addEventListener('click', () => {
-                    userOption.classList.toggle('selected');
-                    if (userOption.classList.contains('selected')) {
-                        this.selectedUsers.add(username);
-                    } else {
-                        this.selectedUsers.delete(username);
+                // WebRTC переменные
+                this.peerConnection = null;
+                this.localStream = null;
+                this.remoteStream = null;
+                this.isInCall = false;
+                this.isCaller = false;
+                this.callStartTime = null;
+                this.callTimerInterval = null;
+                this.currentCaller = null;
+                this.currentCallType = null;
+                this.currentCallId = null;
+                this.targetUser = null;
+                this.callSound = null;
+                this.isScreenSharing = false;
+                this.remoteOffer = null;
+                
+                // Данные
+                this.onlineUsers = [];
+                this.userGroups = [];
+                this.selectedUsers = new Set();
+                
+                this.init();
+            }
+
+            init() {
+                this.checkAuth();
+                this.setupElements();
+                this.connectSocket();
+                this.bindEvents();
+                this.loadGlobalChats();
+            }
+
+            checkAuth() {
+                const userData = localStorage.getItem('currentUser');
+                if (!userData) {
+                    window.location.href = '/';
+                    return;
+                }
+                this.currentUser = JSON.parse(userData);
+                this.displayUserInfo();
+            }
+
+            displayUserInfo() {
+                document.getElementById('userName').textContent = this.currentUser.username;
+                document.getElementById('userAvatar').textContent = this.currentUser.username.charAt(0).toUpperCase();
+            }
+
+            setupElements() {
+                // Основные элементы
+                this.messageInput = document.getElementById('messageInput');
+                this.sendBtn = document.getElementById('sendBtn');
+                this.messagesContainer = document.getElementById('messagesContainer');
+                this.currentRoomElement = document.getElementById('currentRoom');
+                this.onlineCount = document.getElementById('onlineCount');
+                this.typingIndicator = document.getElementById('typingIndicator');
+                this.fileInput = document.getElementById('fileInput');
+                this.logoutBtn = document.getElementById('logoutBtn');
+                
+                // Чats
+                this.globalChats = document.getElementById('globalChats');
+                this.groupChats = document.getElementById('groupChats');
+                this.privateChats = document.getElementById('privateChats');
+                
+                // Звонки
+                this.callWindow = document.getElementById('callWindow');
+                this.callTitle = document.getElementById('callTitle');
+                this.callStatus = document.getElementById('callStatus');
+                this.remoteVideo = document.getElementById('remoteVideo');
+                this.localVideo = document.getElementById('localVideo');
+                this.videoPlaceholder = document.getElementById('videoPlaceholder');
+                this.callTimer = document.getElementById('callTimer');
+                this.callWith = document.getElementById('callWith');
+                this.callMuteBtn = document.getElementById('callMuteBtn');
+                this.callVideoBtn = document.getElementById('callVideoBtn');
+                this.callEndBtn = document.getElementById('callEndBtn');
+                this.voiceCallBtn = document.getElementById('voiceCallBtn');
+                this.videoCallBtn = document.getElementById('videoCallBtn');
+                this.screenShareBtn = document.getElementById('screenShareBtn');
+                this.screenShareCallBtn = document.getElementById('screenShareCallBtn');
+                
+                // Входящий звонок
+                this.incomingCallModal = document.getElementById('incomingCallModal');
+                this.callerName = document.getElementById('callerName');
+                this.callerAvatar = document.getElementById('callerAvatar');
+                this.callType = document.getElementById('callType');
+                this.acceptCallBtn = document.getElementById('acceptCallBtn');
+                this.rejectCallBtn = document.getElementById('rejectCallBtn');
+                
+                // Группы
+                this.createGroupModal = document.getElementById('createGroupModal');
+                this.createGroupBtn = document.getElementById('createGroupBtn');
+                this.addGroupBtn = document.getElementById('addGroupBtn');
+                this.groupNameInput = document.getElementById('groupNameInput');
+                this.userSelector = document.getElementById('userSelector');
+                this.cancelGroupBtn = document.getElementById('cancelGroupBtn');
+                this.confirmGroupBtn = document.getElementById('confirmGroupBtn');
+            }
+
+            connectSocket() {
+                this.socket = io();
+
+                this.socket.on('connect', () => {
+                    console.log('Connected to server');
+                    this.socket.emit('user_join', { username: this.currentUser.username });
+                });
+
+                this.socket.on('user_joined', (data) => {
+                    this.addSystemMessage(`Пользователь ${data.username} присоединился`);
+                });
+
+                this.socket.on('user_left', (data) => {
+                    this.addSystemMessage(`Пользователь ${data.username} вышел`);
+                });
+
+                this.socket.on('online_users', (data) => {
+                    this.onlineUsers = data.users;
+                    this.updateOnlineUsers();
+                    this.updateUserSelector();
+                });
+
+                this.socket.on('user_groups', (data) => {
+                    this.userGroups = data.groups;
+                    this.updateGroupChats();
+                });
+
+                this.socket.on('new_message', (data) => {
+                    if (data.room === this.currentRoom) {
+                        this.addMessage(data.username, data.text, data.username === this.currentUser.username, 
+                                      data.timestamp, data.file, data.type, data.file_info);
                     }
                 });
+
+                this.socket.on('user_typing', (data) => {
+                    if (data.room === this.currentRoom) {
+                        this.handleTypingIndicator(data.username, data.is_typing);
+                    }
+                });
+
+                // Входящий звонок
+                this.socket.on('incoming_call', (data) => {
+                    this.handleIncomingCall(data.caller, data.type, data.call_id, data.is_group, data.group_name);
+                });
+
+                this.socket.on('call_accepted', (data) => {
+                    this.handleCallAccepted(data.accepted_by, data.call_id);
+                });
+
+                this.socket.on('call_rejected', (data) => {
+                    this.handleCallRejected(data.rejected_by);
+                });
+
+                this.socket.on('call_ended', (data) => {
+                    this.handleCallEnded(data.ended_by);
+                });
+
+                // WebRTC signaling
+                this.socket.on('webrtc_offer', (data) => {
+                    this.handleWebRTCOffer(data);
+                });
+
+                this.socket.on('webrtc_answer', (data) => {
+                    this.handleWebRTCAnswer(data);
+                });
+
+                this.socket.on('webrtc_ice_candidate', (data) => {
+                    this.handleWebRTCIceCandidate(data);
+                });
+
+                this.socket.on('webrtc_call_ended', (data) => {
+                    if (this.currentCallId === data.call_id) {
+                        this.addSystemMessage('📞 Собеседник завершил звонок');
+                        this.endCall();
+                    }
+                });
+            }
+
+            bindEvents() {
+                // Сообщения
+                this.sendBtn.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
+                    }
+                });
+                this.messageInput.addEventListener('input', () => {
+                    this.handleTyping();
+                    this.autoResizeTextarea();
+                });
+
+                // Файлы
+                this.fileInput.addEventListener('change', (e) => {
+                    Array.from(e.target.files).forEach(file => this.uploadFile(file));
+                });
+
+                // Звонки
+                this.voiceCallBtn.addEventListener('click', () => this.startCall('voice'));
+                this.videoCallBtn.addEventListener('click', () => this.startCall('video'));
+                this.screenShareBtn.addEventListener('click', () => this.toggleScreenShare());
+                this.screenShareCallBtn.addEventListener('click', () => this.toggleScreenShare());
+                this.callMuteBtn.addEventListener('click', () => this.toggleMute());
+                this.callVideoBtn.addEventListener('click', () => this.toggleVideo());
+                this.callEndBtn.addEventListener('click', () => this.endCall());
+                this.acceptCallBtn.addEventListener('click', () => this.acceptCall());
+                this.rejectCallBtn.addEventListener('click', () => this.rejectCall());
+
+                // Группы
+                this.createGroupBtn.addEventListener('click', () => this.showCreateGroupModal());
+                this.addGroupBtn.addEventListener('click', () => this.showCreateGroupModal());
+                this.cancelGroupBtn.addEventListener('click', () => this.hideCreateGroupModal());
+                this.confirmGroupBtn.addEventListener('click', () => this.createGroup());
+
+                // Выход
+                this.logoutBtn.addEventListener('click', () => {
+                    this.endCall();
+                    localStorage.removeItem('currentUser');
+                    window.location.href = '/';
+                });
+            }
+
+            // ГЛОБАЛЬНЫЕ ЧАТЫ
+            loadGlobalChats() {
+                const globalChats = [
+                    { id: 'general', name: '🌍 Главный чат', avatar: '🌍', lastMessage: 'Общий чат для всех' },
+                    { id: 'random', name: '🎮 Развлечения', avatar: '🎮', lastMessage: 'Игры, мемы и развлечения' },
+                    { id: 'help', name: '❓ Помощь', avatar: '❓', lastMessage: 'Задавайте вопросы' }
+                ];
+
+                this.globalChats.innerHTML = '';
+                globalChats.forEach(chat => {
+                    const chatItem = this.createChatItem(chat);
+                    this.globalChats.appendChild(chatItem);
+                });
+            }
+
+            // ГРУППЫ
+            showCreateGroupModal() {
+                this.createGroupModal.classList.add('active');
+                this.groupNameInput.value = '';
+                this.selectedUsers.clear();
+                this.updateUserSelector();
+            }
+
+            hideCreateGroupModal() {
+                this.createGroupModal.classList.remove('active');
+            }
+
+            updateUserSelector() {
+                this.userSelector.innerHTML = '';
                 
-                this.userSelector.appendChild(userOption);
-            }
-        });
-    }
-
-    async createGroup() {
-        const groupName = this.groupNameInput.value.trim();
-        if (!groupName) {
-            alert('Введите название группы');
-            return;
-        }
-
-        if (this.selectedUsers.size === 0) {
-            alert('Выберите хотя бы одного участника');
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/groups/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: groupName,
-                    creator: this.currentUser.username,
-                    members: Array.from(this.selectedUsers)
-                })
-            });
-
-            const data = await response.json();
-            
-            if (data.success) {
-                this.hideCreateGroupModal();
-                this.userGroups.push(data.group);
-                this.updateGroupChats();
-                this.addSystemMessage(`✅ Создана группа "${groupName}"`);
-            } else {
-                alert('Ошибка создания группы: ' + data.message);
-            }
-        } catch (error) {
-            alert('Ошибка создания группы');
-        }
-    }
-
-    updateGroupChats() {
-        this.groupChats.innerHTML = '';
-        
-        this.userGroups.forEach(group => {
-            const chatItem = this.createChatItem({
-                id: group.id,
-                name: `👥 ${group.name}`,
-                avatar: '👥',
-                lastMessage: `${group.members.length} участников`
-            });
-            this.groupChats.appendChild(chatItem);
-        });
-    }
-
-    // ОБНОВЛЕНИЕ ОНЛАЙН ПОЛЬЗОВАТЕЛЕЙ
-    updateOnlineUsers() {
-        this.privateChats.innerHTML = '';
-        
-        this.onlineUsers.forEach(username => {
-            if (username !== this.currentUser.username) {
-                const chatItem = this.createChatItem({
-                    id: `private_${[this.currentUser.username, username].sort().join('_')}`,
-                    name: username,
-                    avatar: '💬',
-                    lastMessage: 'Напишите сообщение...',
-                    isPrivate: true
-                });
-                this.privateChats.appendChild(chatItem);
-            }
-        });
-    }
-
-    // СОЗДАНИЕ ЭЛЕМЕНТА ЧАТА
-    createChatItem(chat) {
-        const chatItem = document.createElement('div');
-        chatItem.className = 'chat-item';
-        chatItem.dataset.room = chat.id;
-        
-        chatItem.innerHTML = `
-            <div class="chat-avatar">${chat.avatar}</div>
-            <div class="chat-info">
-                <div class="chat-name">${chat.name}</div>
-                <div class="chat-last-message">${chat.lastMessage}</div>
-            </div>
-            ${chat.isPrivate ? '<div class="online-indicator"></div>' : ''}
-        `;
-        
-        chatItem.addEventListener('click', () => {
-            this.switchRoom(chat.id, chat.name, chat.avatar);
-        });
-        
-        return chatItem;
-    }
-
-    // ПЕРЕКЛЮЧЕНИЕ КОМНАТЫ
-    async switchRoom(roomId, roomName, roomAvatar) {
-        document.querySelectorAll('.chat-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        document.querySelector(`[data-room="${roomId}"]`).classList.add('active');
-        
-        this.currentRoom = roomId;
-        this.currentRoomElement.textContent = roomName;
-        document.getElementById('currentChatAvatar').textContent = roomAvatar;
-        
-        // Включаем поле ввода
-        this.messageInput.disabled = false;
-        this.sendBtn.disabled = false;
-        this.messageInput.placeholder = 'Введите сообщение...';
-        
-        // Загружаем сообщения
-        await this.loadRoomMessages();
-        
-        // Присоединяемся к комнате
-        this.socket.emit('join_room', { room: roomId });
-        
-        // Обновляем статус
-        this.updateRoomStatus();
-    }
-
-    updateRoomStatus() {
-        if (this.currentRoom.startsWith('group_')) {
-            const group = this.userGroups.find(g => g.id === this.currentRoom);
-            if (group) {
-                this.onlineCount.textContent = `${group.members.length} участников`;
-            }
-        } else if (this.currentRoom.startsWith('private_')) {
-            this.onlineCount.textContent = 'личный чат';
-        } else {
-            this.onlineCount.textContent = `${this.onlineUsers.length} онлайн`;
-        }
-    }
-
-    // ЗАГРУЗКА СООБЩЕНИЙ
-    async loadRoomMessages() {
-        try {
-            const response = await fetch(`/api/messages/${this.currentRoom}`);
-            const data = await response.json();
-            
-            this.messagesContainer.innerHTML = '';
-            
-            if (data.messages.length === 0) {
-                this.addSystemMessage('Начните общение в этом чате');
-            } else {
-                data.messages.forEach(msg => {
-                    this.addMessage(msg.username, msg.text, msg.username === this.currentUser.username, 
-                                  msg.timestamp, msg.file, msg.type, msg.file_info);
+                this.onlineUsers.forEach(username => {
+                    if (username !== this.currentUser.username) {
+                        const userOption = document.createElement('div');
+                        userOption.className = 'user-option';
+                        userOption.innerHTML = `
+                            <div class="avatar" style="width: 30px; height: 30px; font-size: 0.9em;">
+                                ${username.charAt(0).toUpperCase()}
+                            </div>
+                            <div>${username}</div>
+                            <div class="online-indicator"></div>
+                        `;
+                        
+                        userOption.addEventListener('click', () => {
+                            userOption.classList.toggle('selected');
+                            if (userOption.classList.contains('selected')) {
+                                this.selectedUsers.add(username);
+                            } else {
+                                this.selectedUsers.delete(username);
+                            }
+                        });
+                        
+                        this.userSelector.appendChild(userOption);
+                    }
                 });
             }
-        } catch (error) {
-            console.error('Error loading messages:', error);
-            this.addSystemMessage('Ошибка загрузки сообщений');
-        }
-    }
 
-    // ОТПРАВКА СООБЩЕНИЙ
-    sendMessage() {
-        const text = this.messageInput.value.trim();
-        if (!text) return;
+            async createGroup() {
+                const groupName = this.groupNameInput.value.trim();
+                if (!groupName) {
+                    alert('Введите название группы');
+                    return;
+                }
 
-        this.socket.emit('send_message', {
-            username: this.currentUser.username,
-            text: text,
-            room: this.currentRoom,
-            type: 'text'
-        });
+                if (this.selectedUsers.size === 0) {
+                    alert('Выберите хотя бы одного участника');
+                    return;
+                }
 
-        this.messageInput.value = '';
-        this.autoResizeTextarea();
-        this.stopTyping();
-    }
+                try {
+                    const response = await fetch('/api/groups/create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            name: groupName,
+                            creator: this.currentUser.username,
+                            members: Array.from(this.selectedUsers)
+                        })
+                    });
 
-    // ЗАГРУЗКА ФАЙЛОВ (Telegram-style)
-    async uploadFile(file) {
-        if (!file) return;
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.hideCreateGroupModal();
+                        this.userGroups.push(data.group);
+                        this.updateGroupChats();
+                        this.addSystemMessage(`✅ Создана группа "${groupName}"`);
+                    } else {
+                        alert('Ошибка создания группы: ' + data.message);
+                    }
+                } catch (error) {
+                    alert('Ошибка создания группы');
+                }
+            }
 
-        const formData = new FormData();
-        formData.append('file', file);
+            updateGroupChats() {
+                this.groupChats.innerHTML = '';
+                
+                this.userGroups.forEach(group => {
+                    const chatItem = this.createChatItem({
+                        id: group.id,
+                        name: `👥 ${group.name}`,
+                        avatar: '👥',
+                        lastMessage: `${group.members.length} участников`
+                    });
+                    this.groupChats.appendChild(chatItem);
+                });
+            }
 
-        try {
-            this.addSystemMessage('📤 Загрузка файла...');
+            // ОБНОВЛЕНИЕ ОНЛАЙН ПОЛЬЗОВАТЕЛЕЙ
+            updateOnlineUsers() {
+                this.privateChats.innerHTML = '';
+                
+                this.onlineUsers.forEach(username => {
+                    if (username !== this.currentUser.username) {
+                        const chatItem = this.createChatItem({
+                            id: `private_${[this.currentUser.username, username].sort().join('_')}`,
+                            name: username,
+                            avatar: '💬',
+                            lastMessage: 'Напишите сообщение...',
+                            isPrivate: true
+                        });
+                        this.privateChats.appendChild(chatItem);
+                    }
+                });
+            }
 
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
+            // СОЗДАНИЕ ЭЛЕМЕНТА ЧАТА
+            createChatItem(chat) {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item';
+                chatItem.dataset.room = chat.id;
+                
+                chatItem.innerHTML = `
+                    <div class="chat-avatar">${chat.avatar}</div>
+                    <div class="chat-info">
+                        <div class="chat-name">${chat.name}</div>
+                        <div class="chat-last-message">${chat.lastMessage}</div>
+                    </div>
+                    ${chat.isPrivate ? '<div class="online-indicator"></div>' : ''}
+                `;
+                
+                chatItem.addEventListener('click', () => {
+                    this.switchRoom(chat.id, chat.name, chat.avatar);
+                });
+                
+                return chatItem;
+            }
 
-            const data = await response.json();
+            // ПЕРЕКЛЮЧЕНИЕ КОМНАТЫ
+            async switchRoom(roomId, roomName, roomAvatar) {
+                document.querySelectorAll('.chat-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelector(`[data-room="${roomId}"]`).classList.add('active');
+                
+                this.currentRoom = roomId;
+                this.currentRoomElement.textContent = roomName;
+                document.getElementById('currentChatAvatar').textContent = roomAvatar;
+                
+                // Включаем поле ввода
+                this.messageInput.disabled = false;
+                this.sendBtn.disabled = false;
+                this.messageInput.placeholder = 'Введите сообщение...';
+                
+                // Загружаем сообщения
+                await this.loadRoomMessages();
+                
+                // Присоединяемся к комнате
+                this.socket.emit('join_room', { room: roomId });
+                
+                // Обновляем статус
+                this.updateRoomStatus();
+            }
 
-            if (data.success) {
+            updateRoomStatus() {
+                if (this.currentRoom.startsWith('group_')) {
+                    const group = this.userGroups.find(g => g.id === this.currentRoom);
+                    if (group) {
+                        this.onlineCount.textContent = `${group.members.length} участников`;
+                    }
+                } else if (this.currentRoom.startsWith('private_')) {
+                    this.onlineCount.textContent = 'личный чат';
+                } else {
+                    this.onlineCount.textContent = `${this.onlineUsers.length} онлайн`;
+                }
+            }
+
+            // ЗАГРУЗКА СООБЩЕНИЙ
+            async loadRoomMessages() {
+                try {
+                    const response = await fetch(`/api/messages/${this.currentRoom}`);
+                    const data = await response.json();
+                    
+                    this.messagesContainer.innerHTML = '';
+                    
+                    if (data.messages.length === 0) {
+                        this.addSystemMessage('Начните общение в этом чате');
+                    } else {
+                        data.messages.forEach(msg => {
+                            this.addMessage(msg.username, msg.text, msg.username === this.currentUser.username, 
+                                          msg.timestamp, msg.file, msg.type, msg.file_info);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading messages:', error);
+                    this.addSystemMessage('Ошибка загрузки сообщений');
+                }
+            }
+
+            // ОТПРАВКА СООБЩЕНИЙ
+            sendMessage() {
+                const text = this.messageInput.value.trim();
+                if (!text) return;
+
                 this.socket.emit('send_message', {
                     username: this.currentUser.username,
-                    text: data.original_name,
-                    file: data.url,
-                    file_info: {
-                        type: data.type,
-                        size: data.size,
-                        extension: data.extension
-                    },
+                    text: text,
                     room: this.currentRoom,
-                    type: 'file'
+                    type: 'text'
                 });
-            } else {
-                this.addSystemMessage('❌ Ошибка загрузки: ' + data.message);
+
+                this.messageInput.value = '';
+                this.autoResizeTextarea();
+                this.stopTyping();
             }
-        } catch (error) {
-            this.addSystemMessage('❌ Ошибка загрузки файла');
-        }
 
-        this.fileInput.value = '';
-    }
+            // ЗАГРУЗКА ФАЙЛОВ (Telegram-style)
+            async uploadFile(file) {
+                if (!file) return;
 
-    // ЗВОНКИ (WhatsApp-style)
-    startCall(type) {
-        if (!this.currentRoom) {
-            alert('Выберите чат для звонка');
-            return;
-        }
+                const formData = new FormData();
+                formData.append('file', file);
 
-        if (this.isInCall) {
-            alert('Вы уже в звонке');
-            return;
-        }
+                try {
+                    this.addSystemMessage('📤 Загрузка файла...');
 
-        this.currentCallType = type;
-        this.isCaller = true;
-        this.currentCallId = 'call_' + Date.now();
+                    const response = await fetch('/api/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
 
-        let target = this.currentRoom;
-        if (this.currentRoom.startsWith('private_')) {
-            const users = this.currentRoom.replace('private_', '').split('_');
-            target = users.find(user => user !== this.currentUser.username);
-        }
+                    const data = await response.json();
 
-        // Воспроизводим звук исходящего звонка
-        this.playCallSound('outgoing');
+                    if (data.success) {
+                        this.socket.emit('send_message', {
+                            username: this.currentUser.username,
+                            text: data.original_name,
+                            file: data.url,
+                            file_info: {
+                                type: data.type,
+                                size: data.size,
+                                extension: data.extension
+                            },
+                            room: this.currentRoom,
+                            type: 'file'
+                        });
+                    } else {
+                        this.addSystemMessage('❌ Ошибка загрузки: ' + data.message);
+                    }
+                } catch (error) {
+                    this.addSystemMessage('❌ Ошибка загрузки файла');
+                }
 
-        // Показываем окно звонка
-        this.showCallWindow(`Звонок ${this.getRoomName(this.currentRoom)}`, 'Звонок...');
-        this.callWith.textContent = `В: ${this.getRoomName(this.currentRoom)}`;
-
-        // Отправляем запрос на звонок
-        this.socket.emit('start_call', {
-            username: this.currentUser.username,
-            target: target,
-            type: type,
-            call_id: this.currentCallId
-        });
-
-        // Таймаут
-        this.callTimeout = setTimeout(() => {
-            if (this.isInCall && this.isCaller) {
-                this.addSystemMessage('❌ Никто не ответил на звонок');
-                this.endCall();
+                this.fileInput.value = '';
             }
-        }, 30000);
-    }
 
-    handleIncomingCall(caller, type, call_id, is_group = false, group_name = '') {
-        if (this.isInCall) {
-            this.socket.emit('reject_call', {
-                username: this.currentUser.username,
-                caller: caller,
-                call_id: call_id
-            });
-            return;
-        }
+            // WebRTC РЕАЛЬНЫЕ ЗВОНКИ
+            async startCall(type) {
+                if (!this.currentRoom) {
+                    alert('Выберите чат для звонка');
+                    return;
+                }
 
-        this.currentCaller = caller;
-        this.currentCallType = type;
-        this.currentCallId = call_id;
+                if (this.isInCall) {
+                    alert('Вы уже в звонке');
+                    return;
+                }
 
-        // Воспроизводим звук входящего звонка
-        this.playCallSound('incoming');
+                try {
+                    this.currentCallType = type;
+                    this.isCaller = true;
+                    this.currentCallId = 'call_' + Date.now();
 
-        this.callerName.textContent = `Входящий звонок от ${caller}`;
-        this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
-        this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
-        this.incomingCallModal.classList.add('active');
-    }
+                    // Получаем медиа-поток
+                    await this.getUserMedia();
 
-    // ДЕМОНСТРАЦИЯ ЭКРАНА
-    async toggleScreenShare() {
-        if (!this.isInCall) return;
+                    let target = this.currentRoom;
+                    if (this.currentRoom.startsWith('private_')) {
+                        const users = this.currentRoom.replace('private_', '').split('_');
+                        target = users.find(user => user !== this.currentUser.username);
+                    }
 
-        try {
-            if (!this.isScreenSharing) {
-                const stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: true,
-                    audio: true
-                });
+                    // Показываем окно звонка
+                    this.showCallWindow(`Звонок ${this.getRoomName(this.currentRoom)}`, 'Установка соединения...');
+                    this.callWith.textContent = `В: ${this.getRoomName(this.currentRoom)}`;
+
+                    // Создаем WebRTC соединение
+                    await this.createPeerConnection();
+
+                    // Создаем и отправляем оффер
+                    const offer = await this.peerConnection.createOffer();
+                    await this.peerConnection.setLocalDescription(offer);
+
+                    // Отправляем запрос на звонок
+                    this.socket.emit('start_call', {
+                        username: this.currentUser.username,
+                        target: target,
+                        type: type,
+                        call_id: this.currentCallId
+                    });
+
+                    // Отправляем WebRTC оффер
+                    this.socket.emit('webrtc_offer', {
+                        offer: offer,
+                        caller: this.currentUser.username,
+                        target: target,
+                        call_id: this.currentCallId
+                    });
+
+                    // Таймаут
+                    this.callTimeout = setTimeout(() => {
+                        if (this.isInCall && this.isCaller) {
+                            this.addSystemMessage('❌ Никто не ответил на звонок');
+                            this.endCall();
+                        }
+                    }, 30000);
+
+                } catch (error) {
+                    console.error('Error starting call:', error);
+                    this.addSystemMessage('❌ Ошибка запуска звонка');
+                    this.endCall();
+                }
+            }
+
+            async getUserMedia() {
+                try {
+                    const constraints = {
+                        audio: true,
+                        video: this.currentCallType === 'video' ? {
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        } : false
+                    };
+
+                    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    
+                    // Показываем локальное видео
+                    if (this.localVideo) {
+                        this.localVideo.srcObject = this.localStream;
+                    }
+
+                    return this.localStream;
+                } catch (error) {
+                    console.error('Error accessing media devices:', error);
+                    throw new Error('Не удалось получить доступ к камере/микрофону');
+                }
+            }
+
+            async createPeerConnection() {
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+
+                this.peerConnection = new RTCPeerConnection(configuration);
+
+                // Добавляем локальный поток
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => {
+                        this.peerConnection.addTrack(track, this.localStream);
+                    });
+                }
+
+                // Обработчик удаленного потока
+                this.peerConnection.ontrack = (event) => {
+                    console.log('Received remote stream');
+                    if (this.remoteVideo) {
+                        this.remoteVideo.srcObject = event.streams[0];
+                        this.videoPlaceholder.style.display = 'none';
+                    }
+                };
+
+                // Обработчик ICE кандидатов
+                this.peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        let target = this.currentRoom;
+                        if (this.currentRoom.startsWith('private_')) {
+                            const users = this.currentRoom.replace('private_', '').split('_');
+                            target = users.find(user => user !== this.currentUser.username);
+                        }
+
+                        this.socket.emit('webrtc_ice_candidate', {
+                            candidate: event.candidate,
+                            call_id: this.currentCallId,
+                            target_user: target,
+                            caller: this.currentUser.username
+                        });
+                    }
+                };
+
+                // Обработчик изменения состояния соединения
+                this.peerConnection.onconnectionstatechange = () => {
+                    console.log('Connection state:', this.peerConnection.connectionState);
+                    switch (this.peerConnection.connectionState) {
+                        case 'connected':
+                            this.callStatus.textContent = 'Соединение установлено';
+                            break;
+                        case 'disconnected':
+                        case 'failed':
+                            this.addSystemMessage('❌ Соединение прервано');
+                            this.endCall();
+                            break;
+                    }
+                };
+            }
+
+            async handleIncomingCall(caller, type, call_id, is_group = false, group_name = '') {
+                if (this.isInCall) {
+                    this.socket.emit('reject_call', {
+                        username: this.currentUser.username,
+                        caller: caller,
+                        call_id: call_id
+                    });
+                    return;
+                }
+
+                this.currentCaller = caller;
+                this.currentCallType = type;
+                this.currentCallId = call_id;
+
+                // Воспроизводим звук входящего звонка
+                this.playCallSound('incoming');
+
+                this.callerName.textContent = `Входящий звонок от ${caller}`;
+                this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
+                this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
+                this.incomingCallModal.classList.add('active');
+            }
+
+            async acceptCall() {
+                try {
+                    this.incomingCallModal.classList.remove('active');
+                    this.isInCall = true;
+                    this.stopCallSound();
+                    
+                    // Получаем медиа-поток
+                    await this.getUserMedia();
+                    
+                    // Создаем WebRTC соединение
+                    await this.createPeerConnection();
+
+                    // Показываем окно звонка
+                    this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
+                    this.callWith.textContent = `С: ${this.currentCaller}`;
+                    this.startCallTimer();
+
+                    // Устанавливаем удаленное описание (оффер)
+                    if (this.remoteOffer) {
+                        await this.peerConnection.setRemoteDescription(this.remoteOffer);
+                        
+                        // Создаем и отправляем ответ
+                        const answer = await this.peerConnection.createAnswer();
+                        await this.peerConnection.setLocalDescription(answer);
+
+                        this.socket.emit('webrtc_answer', {
+                            answer: answer,
+                            caller: this.currentCaller,
+                            call_id: this.currentCallId
+                        });
+                    }
+
+                    // Уведомляем звонящего
+                    this.socket.emit('accept_call', {
+                        username: this.currentUser.username,
+                        caller: this.currentCaller,
+                        call_id: this.currentCallId
+                    });
+
+                    this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
+
+                } catch (error) {
+                    console.error('Error accepting call:', error);
+                    this.addSystemMessage('❌ Ошибка принятия звонка');
+                    this.endCall();
+                }
+            }
+
+            rejectCall() {
+                this.incomingCallModal.classList.remove('active');
+                this.stopCallSound();
                 
-                // Здесь будет логика передачи потока демонстрации экрана
-                this.isScreenSharing = true;
-                this.addSystemMessage('🖥️ Демонстрация экрана начата');
-            } else {
-                // Остановка демонстрации
+                this.socket.emit('reject_call', {
+                    username: this.currentUser.username,
+                    caller: this.currentCaller,
+                    call_id: this.currentCallId
+                });
+
+                this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
+                this.resetCallData();
+            }
+
+            // WebRTC обработчики
+            handleWebRTCOffer(data) {
+                if (this.currentCallId === data.call_id) {
+                    this.remoteOffer = new RTCSessionDescription(data.offer);
+                    
+                    // Если мы уже приняли звонок, обрабатываем оффер
+                    if (this.isInCall && this.peerConnection) {
+                        this.peerConnection.setRemoteDescription(this.remoteOffer)
+                            .then(() => this.peerConnection.createAnswer())
+                            .then(answer => {
+                                this.peerConnection.setLocalDescription(answer);
+                                this.socket.emit('webrtc_answer', {
+                                    answer: answer,
+                                    caller: data.caller,
+                                    call_id: this.currentCallId
+                                });
+                            });
+                    }
+                }
+            }
+
+            handleWebRTCAnswer(data) {
+                if (this.currentCallId === data.call_id && this.peerConnection) {
+                    const answer = new RTCSessionDescription(data.answer);
+                    this.peerConnection.setRemoteDescription(answer);
+                }
+            }
+
+            handleWebRTCIceCandidate(data) {
+                if (this.currentCallId === data.call_id && this.peerConnection) {
+                    this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            }
+
+            // Демонстрация экрана
+            async toggleScreenShare() {
+                if (!this.isInCall) return;
+
+                try {
+                    if (!this.isScreenSharing) {
+                        // Начинаем демонстрацию экрана
+                        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                            video: true,
+                            audio: true
+                        });
+                        
+                        // Заменяем видеотрек
+                        const videoTrack = screenStream.getVideoTracks()[0];
+                        const sender = this.peerConnection.getSenders().find(s => 
+                            s.track && s.track.kind === 'video'
+                        );
+                        
+                        if (sender) {
+                            await sender.replaceTrack(videoTrack);
+                        }
+                        
+                        videoTrack.onended = () => {
+                            this.toggleScreenShare();
+                        };
+                        
+                        this.isScreenSharing = true;
+                        this.addSystemMessage('🖥️ Демонстрация экрана начата');
+                        
+                    } else {
+                        // Возвращаем камеру
+                        const videoTrack = this.localStream.getVideoTracks()[0];
+                        const sender = this.peerConnection.getSenders().find(s => 
+                            s.track && s.track.kind === 'video'
+                        );
+                        
+                        if (sender && videoTrack) {
+                            await sender.replaceTrack(videoTrack);
+                        }
+                        
+                        this.isScreenSharing = false;
+                        this.addSystemMessage('🖥️ Демонстрация экрана остановлена');
+                    }
+                } catch (error) {
+                    console.error('Error toggling screen share:', error);
+                    this.addSystemMessage('❌ Ошибка демонстрации экрана');
+                }
+            }
+
+            // ЗВУК ЗВОНКА
+            playCallSound(type) {
+                this.stopCallSound();
+                
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                if (type === 'incoming') {
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+                    
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.5);
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1.0);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime + 1.5);
+                    
+                    oscillator.start();
+                    oscillator.stop(audioContext.currentTime + 4);
+                } else {
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                    oscillator.start();
+                    
+                    this.callSound = { oscillator, context: audioContext };
+                }
+            }
+
+            stopCallSound() {
+                if (this.callSound) {
+                    if (this.callSound.oscillator) this.callSound.oscillator.stop();
+                    if (this.callSound.context) this.callSound.context.close();
+                    this.callSound = null;
+                }
+            }
+
+            showCallWindow(title, status) {
+                this.callTitle.textContent = title;
+                this.callStatus.textContent = status;
+                this.callWindow.classList.add('active');
+                this.videoPlaceholder.style.display = 'flex';
+                this.isInCall = true;
+            }
+
+            startCallTimer() {
+                this.callStartTime = new Date();
+                this.updateCallTimer();
+                this.callTimerInterval = setInterval(() => this.updateCallTimer(), 1000);
+            }
+
+            updateCallTimer() {
+                if (this.callStartTime) {
+                    const now = new Date();
+                    const diff = Math.floor((now - this.callStartTime) / 1000);
+                    const minutes = Math.floor(diff / 60);
+                    const seconds = diff % 60;
+                    this.callTimer.textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+
+            toggleMute() {
+                const isMuted = this.callMuteBtn.classList.toggle('mute');
+                this.addSystemMessage(isMuted ? '🎤 Микрофон выключен' : '🎤 Микрофон включен');
+                
+                if (this.localStream) {
+                    const audioTracks = this.localStream.getAudioTracks();
+                    audioTracks.forEach(track => {
+                        track.enabled = !isMuted;
+                    });
+                }
+            }
+
+            toggleVideo() {
+                const isVideoOff = this.callVideoBtn.classList.toggle('video-off');
+                this.addSystemMessage(isVideoOff ? '📹 Камера выключена' : '📹 Камера включена');
+                
+                if (this.localStream) {
+                    const videoTracks = this.localStream.getVideoTracks();
+                    videoTracks.forEach(track => {
+                        track.enabled = !isVideoOff;
+                    });
+                }
+            }
+
+            endCall() {
+                this.isInCall = false;
+                this.isCaller = false;
                 this.isScreenSharing = false;
-                this.addSystemMessage('🖥️ Демонстрация экрана остановлена');
+                this.stopCallSound();
+                
+                // Останавливаем все медиа-потоки
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                    this.localStream = null;
+                }
+                
+                // Закрываем WebRTC соединение
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                    this.peerConnection = null;
+                }
+                
+                if (this.callTimerInterval) {
+                    clearInterval(this.callTimerInterval);
+                    this.callTimerInterval = null;
+                }
+                
+                if (this.callTimeout) {
+                    clearTimeout(this.callTimeout);
+                    this.callTimeout = null;
+                }
+
+                this.callWindow.classList.remove('active');
+                this.incomingCallModal.classList.remove('active');
+
+                // Уведомляем сервер о завершении звонка
+                if (this.currentCallId) {
+                    this.socket.emit('end_call', {
+                        username: this.currentUser.username,
+                        call_id: this.currentCallId
+                    });
+                    
+                    this.socket.emit('webrtc_end_call', {
+                        call_id: this.currentCallId
+                    });
+                }
+
+                this.resetCallData();
+                this.addSystemMessage('📞 Звонок завершен');
             }
-        } catch (error) {
-            this.addSystemMessage('❌ Ошибка демонстрации экрана');
-        }
-    }
 
-    // ЗВУК ЗВОНКА
-    playCallSound(type) {
-        this.stopCallSound();
-        
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        if (type === 'incoming') {
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-            oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
-            
-            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.5);
-            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1.0);
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime + 1.5);
-            
-            oscillator.start();
-            oscillator.stop(audioContext.currentTime + 4);
-        } else {
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-            oscillator.start();
-            
-            this.callSound = { oscillator, context: audioContext };
-        }
-    }
+            resetCallData() {
+                this.currentCaller = null;
+                this.targetUser = null;
+                this.currentCallId = null;
+                this.currentCallType = null;
+                this.remoteOffer = null;
+            }
 
-    // ОСТАЛЬНЫЕ МЕТОДЫ (acceptCall, rejectCall, endCall, и т.д.)
-    acceptCall() {
-        this.incomingCallModal.classList.remove('active');
-        this.isInCall = true;
-        this.stopCallSound();
-        
-        this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
-        this.callWith.textContent = `С: ${this.currentCaller}`;
-        this.startCallTimer();
+            handleCallAccepted(acceptedBy, call_id) {
+                if (this.isCaller && this.currentCallId === call_id) {
+                    this.stopCallSound();
+                    this.callStatus.textContent = 'Соединение установлено';
+                    this.startCallTimer();
+                    this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
+                    
+                    if (this.callTimeout) {
+                        clearTimeout(this.callTimeout);
+                        this.callTimeout = null;
+                    }
+                }
+            }
 
-        this.socket.emit('accept_call', {
-            username: this.currentUser.username,
-            caller: this.currentCaller,
-            call_id: this.currentCallId
-        });
+            handleCallRejected(rejectedBy) {
+                if (this.isCaller) {
+                    this.stopCallSound();
+                    this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
+                    this.endCall();
+                }
+            }
 
-        this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
-    }
+            handleCallEnded(endedBy) {
+                if (this.isInCall) {
+                    this.stopCallSound();
+                    this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
+                    this.endCall();
+                }
+            }
 
-    rejectCall() {
-        this.incomingCallModal.classList.remove('active');
-        this.stopCallSound();
-        
-        this.socket.emit('reject_call', {
-            username: this.currentUser.username,
-            caller: this.currentCaller,
-            call_id: this.currentCallId
-        });
+            getRoomName(roomId) {
+                if (roomId.startsWith('private_')) {
+                    const users = roomId.replace('private_', '').split('_');
+                    return users.find(user => user !== this.currentUser.username);
+                }
+                if (roomId.startsWith('group_')) {
+                    const group = this.userGroups.find(g => g.id === roomId);
+                    return group ? group.name : 'Группа';
+                }
+                
+                const rooms = {
+                    'general': 'Главный чат',
+                    'random': 'Развлечения', 
+                    'help': 'Помощь'
+                };
+                return rooms[roomId] || roomId;
+            }
 
-        this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
-        this.resetCallData();
-    }
+            // СООБЩЕНИЯ
+            addMessage(sender, text, isOwn, timestamp, file = null, type = 'text', fileInfo = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${isOwn ? 'own' : ''} ${type === 'file' ? 'file-message' : ''}`;
+                
+                const time = new Date(timestamp).toLocaleTimeString('ru-RU', { 
+                    hour: '2-digit', minute: '2-digit' 
+                });
 
-    endCall() {
-        this.isInCall = false;
-        this.isCaller = false;
-        this.isScreenSharing = false;
-        this.stopCallSound();
-        
-        if (this.callTimerInterval) {
-            clearInterval(this.callTimerInterval);
-            this.callTimerInterval = null;
-        }
-        
-        if (this.callTimeout) {
-            clearTimeout(this.callTimeout);
-            this.callTimeout = null;
-        }
+                let content = this.escapeHtml(text);
+                
+                if (type === 'file' && file) {
+                    content = this.createFileMessage(text, file, fileInfo);
+                }
 
-        this.callWindow.classList.remove('active');
-        this.incomingCallModal.classList.remove('active');
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        <span class="sender-name">${sender}</span>
+                        <span class="message-time">${time}</span>
+                    </div>
+                    <div>${content}</div>
+                `;
 
-        if (this.currentCallId) {
-            this.socket.emit('end_call', {
-                username: this.currentUser.username,
-                call_id: this.currentCallId
-            });
-        }
+                this.messagesContainer.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
 
-        this.resetCallData();
-        this.addSystemMessage('📞 Звонок завершен');
-    }
+            createFileMessage(filename, fileUrl, fileInfo) {
+                const fileType = fileInfo?.type || 'other';
+                const fileSize = this.formatFileSize(fileInfo?.size || 0);
+                const fileExt = fileInfo?.extension || filename.split('.').pop();
+                
+                const icons = {
+                    images: '🖼️', videos: '🎬', audio: '🎵', 
+                    documents: '📄', archives: '📦', other: '📎'
+                };
+                
+                let preview = '';
+                if (fileType === 'images') {
+                    preview = `<img src="${fileUrl}" class="image-preview" alt="${filename}">`;
+                }
+                
+                return `
+                    <div class="file-preview">
+                        <div class="file-icon ${fileType}">${icons[fileType]}</div>
+                        <div class="file-info">
+                            <div class="file-name">${filename}</div>
+                            <div class="file-size">${fileSize} • ${fileExt.toUpperCase()}</div>
+                        </div>
+                    </div>
+                    ${preview}
+                    <div class="file-actions">
+                        <button class="file-action-btn" onclick="window.open('${fileUrl}', '_blank')">
+                            📁 Открыть
+                        </button>
+                        <button class="file-action-btn" onclick="downloadFile('${fileUrl}', '${filename}')">
+                            💾 Скачать
+                        </button>
+                    </div>
+                `;
+            }
 
-    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-    stopCallSound() {
-        if (this.callSound) {
-            if (this.callSound.oscillator) this.callSound.oscillator.stop();
-            if (this.callSound.context) this.callSound.context.close();
-            this.callSound = null;
-        }
-    }
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
 
-    showCallWindow(title, status) {
-        this.callTitle.textContent = title;
-        this.callStatus.textContent = status;
-        this.callWindow.classList.add('active');
-        this.videoPlaceholder.style.display = 'flex';
-        this.isInCall = true;
-    }
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
 
-    startCallTimer() {
-        this.callStartTime = new Date();
-        this.updateCallTimer();
-        this.callTimerInterval = setInterval(() => this.updateCallTimer(), 1000);
-    }
+            addSystemMessage(text) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'system-message';
+                messageDiv.textContent = text;
+                this.messagesContainer.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
 
-    updateCallTimer() {
-        if (this.callStartTime) {
-            const now = new Date();
-            const diff = Math.floor((now - this.callStartTime) / 1000);
-            const minutes = Math.floor(diff / 60);
-            const seconds = diff % 60;
-            this.callTimer.textContent = 
-                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
-    }
+            handleTyping() {
+                this.socket.emit('typing', {
+                    username: this.currentUser.username,
+                    is_typing: true,
+                    room: this.currentRoom
+                });
 
-    toggleMute() {
-        const isMuted = this.callMuteBtn.classList.toggle('mute');
-        this.addSystemMessage(isMuted ? '🎤 Микрофон выключен' : '🎤 Микрофон включен');
-    }
+                clearTimeout(this.typingTimer);
+                this.typingTimer = setTimeout(() => this.stopTyping(), 1000);
+            }
 
-    toggleVideo() {
-        const isVideoOff = this.callVideoBtn.classList.toggle('video-off');
-        this.addSystemMessage(isVideoOff ? '📹 Камера выключена' : '📹 Камера включена');
-    }
+            stopTyping() {
+                this.socket.emit('typing', {
+                    username: this.currentUser.username,
+                    is_typing: false,
+                    room: this.currentRoom
+                });
+            }
 
-    resetCallData() {
-        this.currentCaller = null;
-        this.targetUser = null;
-        this.currentCallId = null;
-        this.currentCallType = null;
-    }
+            handleTypingIndicator(username, isTyping) {
+                if (isTyping) {
+                    this.typingUsers.add(username);
+                } else {
+                    this.typingUsers.delete(username);
+                }
+                this.updateTypingIndicator();
+            }
 
-    getRoomName(roomId) {
-        if (roomId.startsWith('private_')) {
-            const users = roomId.replace('private_', '').split('_');
-            return users.find(user => user !== this.currentUser.username);
-        }
-        if (roomId.startsWith('group_')) {
-            const group = this.userGroups.find(g => g.id === roomId);
-            return group ? group.name : 'Группа';
-        }
-        
-        const rooms = {
-            'general': 'Главный чат',
-            'random': 'Развлечения', 
-            'help': 'Помощь'
-        };
-        return rooms[roomId] || roomId;
-    }
+            updateTypingIndicator() {
+                if (this.typingUsers.size > 0) {
+                    const users = Array.from(this.typingUsers);
+                    let text = users.length === 1 ? `${users[0]} печатает...` : `${users.length} пользователей печатают...`;
+                    this.typingIndicator.textContent = ` - ${text}`;
+                    this.typingIndicator.style.display = 'inline';
+                } else {
+                    this.typingIndicator.style.display = 'none';
+                }
+            }
 
-    // СООБЩЕНИЯ
-    addMessage(sender, text, isOwn, timestamp, file = null, type = 'text', fileInfo = null) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${isOwn ? 'own' : ''} ${type === 'file' ? 'file-message' : ''}`;
-        
-        const time = new Date(timestamp).toLocaleTimeString('ru-RU', { 
-            hour: '2-digit', minute: '2-digit' 
-        });
+            autoResizeTextarea() {
+                this.messageInput.style.height = 'auto';
+                this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 120) + 'px';
+            }
 
-        let content = this.escapeHtml(text);
-        
-        if (type === 'file' && file) {
-            content = this.createFileMessage(text, file, fileInfo);
-        }
-
-        messageDiv.innerHTML = `
-            <div class="message-header">
-                <span class="sender-name">${sender}</span>
-                <span class="message-time">${time}</span>
-            </div>
-            <div>${content}</div>
-        `;
-
-        this.messagesContainer.appendChild(messageDiv);
-        this.scrollToBottom();
-    }
-
-    createFileMessage(filename, fileUrl, fileInfo) {
-        const fileType = fileInfo?.type || 'other';
-        const fileSize = this.formatFileSize(fileInfo?.size || 0);
-        const fileExt = fileInfo?.extension || filename.split('.').pop();
-        
-        const icons = {
-            images: '🖼️', videos: '🎬', audio: '🎵', 
-            documents: '📄', archives: '📦', other: '📎'
-        };
-        
-        let preview = '';
-        if (fileType === 'images') {
-            preview = `<img src="${fileUrl}" class="image-preview" alt="${filename}">`;
-        }
-        
-        return `
-            <div class="file-preview">
-                <div class="file-icon ${fileType}">${icons[fileType]}</div>
-                <div class="file-info">
-                    <div class="file-name">${filename}</div>
-                    <div class="file-size">${fileSize} • ${fileExt.toUpperCase()}</div>
-                </div>
-            </div>
-            ${preview}
-            <div class="file-actions">
-                <button class="file-action-btn" onclick="window.open('${fileUrl}', '_blank')">
-                    📁 Открыть
-                </button>
-                <button class="file-action-btn" onclick="this.downloadFile('${fileUrl}', '${filename}')">
-                    💾 Скачать
-                </button>
-            </div>
-        `;
-    }
-
-    downloadFile(url, filename) {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.click();
-    }
-
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    addSystemMessage(text) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'system-message';
-        messageDiv.textContent = text;
-        this.messagesContainer.appendChild(messageDiv);
-        this.scrollToBottom();
-    }
-
-    handleTyping() {
-        this.socket.emit('typing', {
-            username: this.currentUser.username,
-            is_typing: true,
-            room: this.currentRoom
-        });
-
-        clearTimeout(this.typingTimer);
-        this.typingTimer = setTimeout(() => this.stopTyping(), 1000);
-    }
-
-    stopTyping() {
-        this.socket.emit('typing', {
-            username: this.currentUser.username,
-            is_typing: false,
-            room: this.currentRoom
-        });
-    }
-
-    handleTypingIndicator(username, isTyping) {
-        if (isTyping) {
-            this.typingUsers.add(username);
-        } else {
-            this.typingUsers.delete(username);
-        }
-        this.updateTypingIndicator();
-    }
-
-    updateTypingIndicator() {
-        if (this.typingUsers.size > 0) {
-            const users = Array.from(this.typingUsers);
-            let text = users.length === 1 ? `${users[0]} печатает...` : `${users.length} пользователей печатают...`;
-            this.typingIndicator.textContent = ` - ${text}`;
-            this.typingIndicator.style.display = 'inline';
-        } else {
-            this.typingIndicator.style.display = 'none';
-        }
-    }
-
-    autoResizeTextarea() {
-        this.messageInput.style.height = 'auto';
-        this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 120) + 'px';
-    }
-
-    scrollToBottom() {
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-    }
-
-    handleCallAccepted(acceptedBy, call_id) {
-        if (this.isCaller && this.currentCallId === call_id) {
-            this.stopCallSound();
-            this.callStatus.textContent = 'Соединение установлено';
-            this.startCallTimer();
-            this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
-            
-            if (this.callTimeout) {
-                clearTimeout(this.callTimeout);
-                this.callTimeout = null;
+            scrollToBottom() {
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
             }
         }
-    }
 
-    handleCallRejected(rejectedBy) {
-        if (this.isCaller) {
-            this.stopCallSound();
-            this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
-            this.endCall();
+        // Глобальные функции
+        function downloadFile(url, filename) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
         }
-    }
 
-    handleCallEnded(endedBy) {
-        if (this.isInCall) {
-            this.stopCallSound();
-            this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
-            this.endCall();
-        }
-    }
-}
-
-// Глобальные функции
-function downloadFile(url, filename) {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-}
-
-// Инициализация приложения
-const chatApp = new ChatApp();
+        // Инициализация приложения
+        const chatApp = new ChatApp();
     </script>
 </body>
 </html>
