@@ -4,6 +4,7 @@ from flask_socketio import SocketIO, emit, join_room
 from datetime import datetime
 import hashlib
 import uuid
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'noknowgram-simple-secret'
@@ -14,20 +15,24 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Создаем папки
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Простая база данных в памяти
+# База данных
 users_db = {}
-messages_db = {'general': []}
-online_users = {}
-groups = {
-    'general': {'name': 'Общий чат', 'members': []},
-    'friends': {'name': 'Друзья', 'members': []},
-    'work': {'name': 'Работа', 'members': []}
+messages_db = {
+    'general': [],
+    'friends': [],
+    'work': []
 }
+private_messages = {}  # Для личных сообщений: {'user1_user2': [messages]}
+online_users = {}
 
 # Главная страница
 @app.route('/')
 def serve_index():
     return send_file('index.html')
+
+@app.route('/chat.html')
+def serve_chat():
+    return send_file('chat.html')
 
 # Статические файлы
 @app.route('/<path:path>')
@@ -69,6 +74,15 @@ def login():
     
     return jsonify({'success': False, 'message': 'Неверный логин или пароль'})
 
+# API для получения сообщений
+@app.route('/api/messages/<room>')
+def get_messages(room):
+    if room.startswith('private_'):
+        messages = private_messages.get(room, [])
+    else:
+        messages = messages_db.get(room, [])
+    return jsonify({'messages': messages})
+
 # Загрузка файлов
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -79,7 +93,6 @@ def upload_file():
     if file.filename == '':
         return jsonify({'success': False, 'message': 'Файл не выбран'})
     
-    # Простая проверка типа файла
     allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'txt', 'pdf'}
     file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
     
@@ -125,11 +138,8 @@ def handle_user_join(data):
 def handle_message(data):
     room = data.get('room', 'general')
     
-    if room not in messages_db:
-        messages_db[room] = []
-    
     message = {
-        'id': len(messages_db[room]) + 1,
+        'id': str(uuid.uuid4()),
         'username': data['username'],
         'text': data.get('text', ''),
         'file': data.get('file'),
@@ -138,19 +148,35 @@ def handle_message(data):
         'room': room
     }
     
-    messages_db[room].append(message)
-    emit('new_message', message, broadcast=True)
+    # Сохраняем в нужную комнату
+    if room.startswith('private_'):
+        if room not in private_messages:
+            private_messages[room] = []
+        private_messages[room].append(message)
+    else:
+        if room not in messages_db:
+            messages_db[room] = []
+        messages_db[room].append(message)
+    
+    # Отправляем в комнату
+    emit('new_message', message, room=room)
+
+@socketio.on('join_room')
+def handle_join_room(data):
+    room = data.get('room', 'general')
+    join_room(room)
 
 @socketio.on('typing')
 def handle_typing(data):
     emit('user_typing', {
         'username': data['username'],
-        'is_typing': data['is_typing']
-    }, broadcast=True)
-# WebRTC signaling - ИСПРАВЛЕННЫЕ ЗВОНКИ
+        'is_typing': data['is_typing'],
+        'room': data.get('room', 'general')
+    }, room=data.get('room', 'general'))
+
+# ЗВОНКИ С ЗВУКОМ
 @socketio.on('start_call')
 def handle_start_call(data):
-    # Отправляем только конкретному пользователю
     target_user = online_users.get(data.get('target'))
     if target_user:
         emit('incoming_call', {
@@ -158,10 +184,14 @@ def handle_start_call(data):
             'type': data.get('type', 'voice'),
             'call_id': data.get('call_id')
         }, room=target_user['sid'])
+        # Уведомление о начале звонка
+        emit('call_started', {
+            'caller': data['username'],
+            'target': data.get('target')
+        }, broadcast=True)
 
 @socketio.on('accept_call')
 def handle_accept_call(data):
-    # Уведомляем звонящего, что звонок принят
     caller_user = online_users.get(data['caller'])
     if caller_user:
         emit('call_accepted', {
@@ -171,7 +201,6 @@ def handle_accept_call(data):
 
 @socketio.on('reject_call')
 def handle_reject_call(data):
-    # Уведомляем звонящего, что звонок отклонен
     caller_user = online_users.get(data['caller'])
     if caller_user:
         emit('call_rejected', {
@@ -186,43 +215,10 @@ def handle_end_call(data):
         'call_id': data.get('call_id')
     }, broadcast=True)
 
-# WebRTC signaling для передачи медиа-данных
-@socketio.on('webrtc_offer')
-def handle_webrtc_offer(data):
-    target_user = online_users.get(data['target_user'])
-    if target_user:
-        emit('webrtc_offer', {
-            'offer': data['offer'],
-            'caller': data['caller'],
-            'call_id': data['call_id']
-        }, room=target_user['sid'])
-
-@socketio.on('webrtc_answer')
-def handle_webrtc_answer(data):
-    target_user = online_users.get(data['target_user'])
-    if target_user:
-        emit('webrtc_answer', {
-            'answer': data['answer'],
-            'call_id': data['call_id']
-        }, room=target_user['sid'])
-
-@socketio.on('webrtc_ice_candidate')
-def handle_webrtc_ice_candidate(data):
-    target_user = online_users.get(data['target_user'])
-    if target_user:
-        emit('webrtc_ice_candidate', {
-            'candidate': data['candidate'],
-            'call_id': data['call_id']
-        }, room=target_user['sid'])
-
-@socketio.on('end_call')
-def handle_end_call(data):
-    emit('call_ended', {
-        'ended_by': data['username']
-    }, broadcast=True)
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    print("🚀 NoknowGram Simple Server запущен!")
+    print("🚀 NoknowGram Messenger запущен!")
     print(f"🌐 Порт: {port}")
+    print("💬 Личные сообщения: ВКЛ")
+    print("🔊 Звук звонков: ВКЛ")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
