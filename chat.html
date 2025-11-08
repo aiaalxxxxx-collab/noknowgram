@@ -871,16 +871,18 @@
                 });
 
                 this.socket.on('call_rejected', (data) => {
-                    this.handleCallRejected(data.rejected_by);
+                this.handleCallRejected(data.rejected_by);
                 });
 
-                this.socket.on('call_ended', (data) => {
-                    this.handleCallEnded(data.ended_by);
+                // ⭐⭐ ПРАВИЛЬНО - ДОБАВЬТЕ ЗДЕСЬ: ⭐⭐
+                this.socket.on('call_accepted', (data) => {
+                this.handleCallAccepted(data.accepted_by, data.call_id);
                 });
+                // ⭐⭐ КОНЕЦ ДОБАВЛЕНИЯ ⭐⭐
 
                 // WebRTC signaling
                 this.socket.on('webrtc_offer', (data) => {
-                    this.handleWebRTCOffer(data.offer, data.caller, data.call_id);
+                this.handleWebRTCOffer(data.offer, data.caller, data.call_id);
                 });
 
                 this.socket.on('webrtc_answer', (data) => {
@@ -1012,34 +1014,149 @@
                 this.fileInput.value = '';
             }
 
-            // ЗВОНКИ - УПРОЩЕННАЯ ВЕРСИЯ ДЛЯ ДЕМО
-            startCall(targetUser, type) {
-                this.targetUser = targetUser;
-                this.currentCallType = type;
-                this.isCaller = true;
-                this.currentCallId = 'call_' + Date.now();
+            // ЗВОНКИ - ИСПРАВЛЕННАЯ ВЕРСИЯ
+startCall(targetUser, type) {
+    if (this.isInCall) return;
+    
+    this.targetUser = targetUser;
+    this.currentCallType = type;
+    this.isCaller = true;
+    this.currentCallId = 'call_' + Date.now();
 
-                // Показываем окно звонка
-                this.showCallWindow(`Звонок ${targetUser}`, 'Установка соединения...');
-                this.callWith.textContent = `С: ${targetUser}`;
+    // Показываем окно звонка
+    this.showCallWindow(`Звонок ${targetUser}`, 'Звонок...');
+    this.callWith.textContent = `С: ${targetUser}`;
 
-                // Отправляем запрос на звонок
-                this.socket.emit('start_call', {
-                    username: this.currentUser.username,
-                    target: targetUser,
-                    type: type,
-                    call_id: this.currentCallId
-                });
+    // Отправляем запрос на звонок КОНКРЕТНОМУ пользователю
+    this.socket.emit('start_call', {
+        username: this.currentUser.username,
+        target: targetUser,
+        type: type,
+        call_id: this.currentCallId
+    });
 
-                // Для демо - сразу начинаем "звонок"
-                setTimeout(() => {
-                    if (this.isInCall) {
-                        this.callStatus.textContent = 'Соединение установлено';
-                        this.startCallTimer();
-                        this.addSystemMessage(`📞 Звонок с ${targetUser} начат`);
-                    }
-                }, 2000);
-            }
+    // Таймаут для автоматического завершения, если нет ответа
+    this.callTimeout = setTimeout(() => {
+        if (this.isInCall && this.isCaller) {
+            this.addSystemMessage(`❌ ${targetUser} не ответил на звонок`);
+            this.endCall();
+        }
+    }, 30000); // 30 секунд
+}
+
+handleIncomingCall(caller, type, call_id) {
+    if (this.isInCall) {
+        // Автоматически отклоняем, если уже в звонке
+        this.socket.emit('reject_call', {
+            username: this.currentUser.username,
+            caller: caller,
+            call_id: call_id
+        });
+        return;
+    }
+
+    this.currentCaller = caller;
+    this.currentCallType = type;
+    this.currentCallId = call_id;
+
+    this.callerName.textContent = `Входящий звонок от ${caller}`;
+    this.callerAvatar.textContent = caller.charAt(0).toUpperCase();
+    this.callType.textContent = type === 'voice' ? 'Аудиозвонок' : 'Видеозвонок';
+    this.incomingCallModal.classList.add('active');
+}
+
+acceptCall() {
+    this.incomingCallModal.classList.remove('active');
+    this.isInCall = true;
+    
+    this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
+    this.callWith.textContent = `С: ${this.currentCaller}`;
+    this.startCallTimer();
+
+    // Уведомляем звонящего, что звонок принят
+    this.socket.emit('accept_call', {
+        username: this.currentUser.username,
+        caller: this.currentCaller,
+        call_id: this.currentCallId
+    });
+
+    this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
+}
+
+rejectCall() {
+    this.incomingCallModal.classList.remove('active');
+    
+    this.socket.emit('reject_call', {
+        username: this.currentUser.username,
+        caller: this.currentCaller,
+        call_id: this.currentCallId
+    });
+
+    this.addSystemMessage(`❌ Вы отклонили звонок от ${this.currentCaller}`);
+    this.resetCallData();
+}
+
+handleCallAccepted(acceptedBy, call_id) {
+    if (this.isCaller && this.currentCallId === call_id) {
+        this.callStatus.textContent = 'Соединение установлено';
+        this.startCallTimer();
+        this.addSystemMessage(`✅ ${acceptedBy} принял звонок`);
+        
+        // Очищаем таймаут ожидания
+        if (this.callTimeout) {
+            clearTimeout(this.callTimeout);
+            this.callTimeout = null;
+        }
+    }
+}
+
+handleCallRejected(rejectedBy) {
+    if (this.isCaller) {
+        this.addSystemMessage(`❌ ${rejectedBy} отклонил звонок`);
+        this.endCall();
+    }
+}
+
+handleCallEnded(endedBy) {
+    if (this.isInCall) {
+        this.addSystemMessage(`📞 ${endedBy} завершил звонок`);
+        this.endCall();
+    }
+}
+
+endCall() {
+    this.isInCall = false;
+    this.isCaller = false;
+    
+    if (this.callTimerInterval) {
+        clearInterval(this.callTimerInterval);
+        this.callTimerInterval = null;
+    }
+    
+    if (this.callTimeout) {
+        clearTimeout(this.callTimeout);
+        this.callTimeout = null;
+    }
+
+    this.callWindow.classList.remove('active');
+    this.incomingCallModal.classList.remove('active');
+
+    if (this.currentCallId) {
+        this.socket.emit('end_call', {
+            username: this.currentUser.username,
+            call_id: this.currentCallId
+        });
+    }
+
+    this.resetCallData();
+}
+
+resetCallData() {
+    this.currentCaller = null;
+    this.targetUser = null;
+    this.currentCallId = null;
+    this.currentCallType = null;
+}
 
             handleIncomingCall(caller, type, call_id) {
                 if (this.isInCall) return;
