@@ -198,12 +198,6 @@
             text-overflow: ellipsis;
         }
 
-        .chat-meta {
-            text-align: right;
-            font-size: 0.7em;
-            color: var(--text-secondary);
-        }
-
         /* Основная область чата */
         .chat-area {
             flex: 1;
@@ -302,7 +296,6 @@
             margin-left: 10px;
         }
 
-        /* Стили для файлов как в Telegram */
         .file-message {
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border-color);
@@ -801,15 +794,6 @@
             background-color: var(--accent-primary);
             margin-left: auto;
         }
-
-        .unread-badge {
-            background: var(--accent-primary);
-            color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 0.7em;
-            margin-left: auto;
-        }
     </style>
 </head>
 <body>
@@ -893,7 +877,6 @@
                         <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Прикрепить файл">
                             📎
                         </button>
-                        <button class="icon-btn" id="emojiBtn" title="Эмодзи">😊</button>
                     </div>
                     <textarea 
                         class="message-input" 
@@ -1432,7 +1415,7 @@
                 this.stopTyping();
             }
 
-            // ЗАГРУЗКА ФАЙЛОВ (Telegram-style)
+            // ЗАГРУЗКА ФАЙЛОВ
             async uploadFile(file) {
                 if (!file) return;
 
@@ -1543,7 +1526,11 @@
             async getUserMedia() {
                 try {
                     const constraints = {
-                        audio: true,
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        },
                         video: this.currentCallType === 'video' ? {
                             width: { ideal: 1280 },
                             height: { ideal: 720 }
@@ -1557,121 +1544,88 @@
                         this.localVideo.srcObject = this.localStream;
                     }
 
+                    console.log('Got media stream with tracks:', this.localStream.getTracks());
                     return this.localStream;
                 } catch (error) {
                     console.error('Error accessing media devices:', error);
-                    throw new Error('Не удалось получить доступ к камере/микрофону');
+                    this.addSystemMessage('❌ Не удалось получить доступ к камере/микрофону');
+                    throw error;
                 }
             }
 
             async createPeerConnection() {
-    try {
-        const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
-        };
+                try {
+                    const configuration = {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' },
+                            { urls: 'stun:stun2.l.google.com:19302' }
+                        ]
+                    };
 
-        this.peerConnection = new RTCPeerConnection(configuration);
+                    this.peerConnection = new RTCPeerConnection(configuration);
 
-        // ДОБАВЛЯЕМ ОТЛАДКУ АУДИО
-        console.log('Local stream audio tracks:', this.localStream.getAudioTracks());
-        
-        // Добавляем локальный поток
-        if (this.localStream) {
-            this.localStream.getTracks().forEach(track => {
-                console.log('Adding track:', track.kind, track.enabled, track.readyState);
-                this.peerConnection.addTrack(track, this.localStream);
-            });
-        }
-
-        // Обработчик удаленного потока - ИСПРАВЛЕННЫЙ
-        this.peerConnection.ontrack = (event) => {
-            console.log('Received remote stream with tracks:', event.streams[0].getTracks());
-            
-            if (this.remoteVideo) {
-                this.remoteVideo.srcObject = event.streams[0];
-                this.videoPlaceholder.style.display = 'none';
-                
-                // Автовоспроизведение звука
-                this.remoteVideo.play().catch(e => {
-                    console.log('Auto-play prevented:', e);
-                    // Показываем кнопку для ручного включения звука
-                    this.addSystemMessage('🔊 Нажмите на видео чтобы включить звук');
-                });
-            }
-        };
-
-        // Обработчик ICE кандидатов
-        this.peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                let target = this.currentRoom;
-                if (this.currentRoom.startsWith('private_')) {
-                    const users = this.currentRoom.replace('private_', '').split('_');
-                    target = users.find(user => user !== this.currentUser.username);
-                }
-
-                this.socket.emit('webrtc_ice_candidate', {
-                    candidate: event.candidate,
-                    call_id: this.currentCallId,
-                    target_user: target,
-                    caller: this.currentUser.username
-                });
-            }
-        };
-
-        // Обработчик изменения состояния соединения
-        this.peerConnection.onconnectionstatechange = () => {
-            console.log('Connection state:', this.peerConnection.connectionState);
-            switch (this.peerConnection.connectionState) {
-                case 'connected':
-                    this.callStatus.textContent = 'Соединение установлено';
-                    this.addSystemMessage('✅ Соединение установлено! Говорите сейчас');
-                    break;
-                case 'disconnected':
-                case 'failed':
-                    this.addSystemMessage('❌ Соединение прервано');
-                    this.endCall();
-                    break;
-            }
-        };
-
-        // Отслеживаем аудио потоки
-        this.peerConnection.onnegotiationneeded = () => {
-            console.log('Negotiation needed');
-        };
-
-    } catch (error) {
-        console.error('Error creating peer connection:', error);
-        throw error;
-    }
-}
-
-                        this.socket.emit('webrtc_ice_candidate', {
-                            candidate: event.candidate,
-                            call_id: this.currentCallId,
-                            target_user: target,
-                            caller: this.currentUser.username
+                    // Добавляем локальный поток
+                    if (this.localStream) {
+                        this.localStream.getTracks().forEach(track => {
+                            console.log('Adding track:', track.kind, track.enabled);
+                            this.peerConnection.addTrack(track, this.localStream);
                         });
                     }
-                };
 
-                // Обработчик изменения состояния соединения
-                this.peerConnection.onconnectionstatechange = () => {
-                    console.log('Connection state:', this.peerConnection.connectionState);
-                    switch (this.peerConnection.connectionState) {
-                        case 'connected':
-                            this.callStatus.textContent = 'Соединение установлено';
-                            break;
-                        case 'disconnected':
-                        case 'failed':
-                            this.addSystemMessage('❌ Соединение прервано');
-                            this.endCall();
-                            break;
-                    }
-                };
+                    // Обработчик удаленного потока
+                    this.peerConnection.ontrack = (event) => {
+                        console.log('Received remote stream with tracks:', event.streams[0].getTracks());
+                        
+                        if (this.remoteVideo) {
+                            this.remoteVideo.srcObject = event.streams[0];
+                            this.videoPlaceholder.style.display = 'none';
+                            
+                            // Автовоспроизведение звука
+                            this.remoteVideo.play().catch(e => {
+                                console.log('Auto-play prevented:', e);
+                            });
+                        }
+                    };
+
+                    // Обработчик ICE кандидатов
+                    this.peerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            let target = this.currentRoom;
+                            if (this.currentRoom.startsWith('private_')) {
+                                const users = this.currentRoom.replace('private_', '').split('_');
+                                target = users.find(user => user !== this.currentUser.username);
+                            }
+
+                            this.socket.emit('webrtc_ice_candidate', {
+                                candidate: event.candidate,
+                                call_id: this.currentCallId,
+                                target_user: target,
+                                caller: this.currentUser.username
+                            });
+                        }
+                    };
+
+                    // Обработчик изменения состояния соединения
+                    this.peerConnection.onconnectionstatechange = () => {
+                        console.log('Connection state:', this.peerConnection.connectionState);
+                        switch (this.peerConnection.connectionState) {
+                            case 'connected':
+                                this.callStatus.textContent = 'Соединение установлено';
+                                this.addSystemMessage('✅ Соединение установлено! Говорите сейчас');
+                                break;
+                            case 'disconnected':
+                            case 'failed':
+                                this.addSystemMessage('❌ Соединение прервано');
+                                this.endCall();
+                                break;
+                        }
+                    };
+
+                } catch (error) {
+                    console.error('Error creating peer connection:', error);
+                    throw error;
+                }
             }
 
             async handleIncomingCall(caller, type, call_id, is_group = false, group_name = '') {
@@ -1697,35 +1651,55 @@
                 this.incomingCallModal.classList.add('active');
             }
 
-          // Проверка работы микрофона
-async testMicrophone() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true,
-            video: false 
-        });
-        
-        const audioContext = new AudioContext();
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        source.connect(analyser);
-        
-        // Проверяем есть ли звук
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(dataArray);
-        const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        
-        console.log('Microphone test - volume level:', volume);
-        
-        // Останавливаем тест
-        stream.getTracks().forEach(track => track.stop());
-        
-        return volume > 5; // Если есть звук
-    } catch (error) {
-        console.error('Microphone test failed:', error);
-        return false;
-    }
-}
+            async acceptCall() {
+                try {
+                    this.incomingCallModal.classList.remove('active');
+                    this.isInCall = true;
+                    this.stopCallSound();
+                    
+                    // Получаем медиа-поток
+                    await this.getUserMedia();
+                    
+                    // Создаем WebRTC соединение
+                    await this.createPeerConnection();
+
+                    // Показываем окно звонка
+                    this.showCallWindow(`Звонок с ${this.currentCaller}`, 'Соединение...');
+                    this.callWith.textContent = `С: ${this.currentCaller}`;
+                    this.startCallTimer();
+
+                    // Устанавливаем удаленное описание (оффер)
+                    if (this.remoteOffer) {
+                        await this.peerConnection.setRemoteDescription(this.remoteOffer);
+                        
+                        // Создаем и отправляем ответ
+                        const answer = await this.peerConnection.createAnswer();
+                        await this.peerConnection.setLocalDescription(answer);
+
+                        this.socket.emit('webrtc_answer', {
+                            answer: answer,
+                            caller: this.currentCaller,
+                            call_id: this.currentCallId
+                        });
+                    }
+
+                    // Уведомляем звонящего
+                    this.socket.emit('accept_call', {
+                        username: this.currentUser.username,
+                        caller: this.currentCaller,
+                        call_id: this.currentCallId
+                    });
+
+                    this.addSystemMessage(`📞 Вы приняли звонок от ${this.currentCaller}`);
+                    this.addSystemMessage('🎤 Говорите - вас должно быть слышно');
+
+                } catch (error) {
+                    console.error('Error accepting call:', error);
+                    this.addSystemMessage('❌ Ошибка принятия звонка');
+                    this.endCall();
+                }
+            }
+
             rejectCall() {
                 this.incomingCallModal.classList.remove('active');
                 this.stopCallSound();
@@ -1742,7 +1716,7 @@ async testMicrophone() {
 
             // WebRTC обработчики
             handleWebRTCOffer(data) {
-                if (this.currentCallId === data.call_id) {
+                if (!this.currentCallId || this.currentCallId === data.call_id) {
                     this.remoteOffer = new RTCSessionDescription(data.offer);
                     
                     // Если мы уже приняли звонок, обрабатываем оффер
@@ -1756,6 +1730,9 @@ async testMicrophone() {
                                     caller: data.caller,
                                     call_id: this.currentCallId
                                 });
+                            })
+                            .catch(error => {
+                                console.error('Error handling offer:', error);
                             });
                     }
                 }
@@ -1764,29 +1741,36 @@ async testMicrophone() {
             handleWebRTCAnswer(data) {
                 if (this.currentCallId === data.call_id && this.peerConnection) {
                     const answer = new RTCSessionDescription(data.answer);
-                    this.peerConnection.setRemoteDescription(answer);
+                    this.peerConnection.setRemoteDescription(answer)
+                        .catch(error => {
+                            console.error('Error setting remote description:', error);
+                        });
                 }
             }
 
             handleWebRTCIceCandidate(data) {
                 if (this.currentCallId === data.call_id && this.peerConnection) {
-                    this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                        .catch(error => {
+                            console.error('Error adding ICE candidate:', error);
+                        });
                 }
             }
 
             // Демонстрация экрана
             async toggleScreenShare() {
-                if (!this.isInCall) return;
+                if (!this.isInCall) {
+                    alert('Сначала начните звонок');
+                    return;
+                }
 
                 try {
                     if (!this.isScreenSharing) {
-                        // Начинаем демонстрацию экрана
                         const screenStream = await navigator.mediaDevices.getDisplayMedia({
                             video: true,
                             audio: true
                         });
                         
-                        // Заменяем видеотрек
                         const videoTrack = screenStream.getVideoTracks()[0];
                         const sender = this.peerConnection.getSenders().find(s => 
                             s.track && s.track.kind === 'video'
@@ -1804,7 +1788,6 @@ async testMicrophone() {
                         this.addSystemMessage('🖥️ Демонстрация экрана начата');
                         
                     } else {
-                        // Возвращаем камеру
                         const videoTrack = this.localStream.getVideoTracks()[0];
                         const sender = this.peerConnection.getSenders().find(s => 
                             s.track && s.track.kind === 'video'
@@ -1827,39 +1810,47 @@ async testMicrophone() {
             playCallSound(type) {
                 this.stopCallSound();
                 
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                if (type === 'incoming') {
-                    oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+                try {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
                     
-                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-                    gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.5);
-                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1.0);
-                    gainNode.gain.setValueAtTime(0, audioContext.currentTime + 1.5);
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
                     
-                    oscillator.start();
-                    oscillator.stop(audioContext.currentTime + 4);
-                } else {
-                    oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
-                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-                    oscillator.start();
-                    
-                    this.callSound = { oscillator, context: audioContext };
+                    if (type === 'incoming') {
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                        oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+                        
+                        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.5);
+                        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1.0);
+                        gainNode.gain.setValueAtTime(0, audioContext.currentTime + 1.5);
+                        
+                        oscillator.start();
+                        oscillator.stop(audioContext.currentTime + 4);
+                    } else {
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                        oscillator.start();
+                        
+                        this.callSound = { oscillator, context: audioContext };
+                    }
+                } catch (error) {
+                    console.error('Error playing call sound:', error);
                 }
             }
 
             stopCallSound() {
                 if (this.callSound) {
-                    if (this.callSound.oscillator) this.callSound.oscillator.stop();
-                    if (this.callSound.context) this.callSound.context.close();
+                    try {
+                        if (this.callSound.oscillator) this.callSound.oscillator.stop();
+                        if (this.callSound.context) this.callSound.context.close();
+                    } catch (error) {
+                        console.error('Error stopping call sound:', error);
+                    }
                     this.callSound = null;
                 }
             }
@@ -2101,6 +2092,8 @@ async testMicrophone() {
             }
 
             handleTyping() {
+                if (!this.currentRoom) return;
+                
                 this.socket.emit('typing', {
                     username: this.currentUser.username,
                     is_typing: true,
@@ -2112,6 +2105,8 @@ async testMicrophone() {
             }
 
             stopTyping() {
+                if (!this.currentRoom) return;
+                
                 this.socket.emit('typing', {
                     username: this.currentUser.username,
                     is_typing: false,
