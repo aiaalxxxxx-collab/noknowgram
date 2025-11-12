@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NoknowGram - Мессенджер</title>
+    <title>NoknowGram - Вход</title>
     <style>
         * {
             margin: 0;
@@ -14,17 +14,12 @@
         :root {
             --bg-primary: #0f1419;
             --bg-secondary: #1e2328;
-            --bg-tertiary: #2d3238;
             --accent-primary: #00d4aa;
-            --accent-secondary: #0099ff;
             --text-primary: #ffffff;
-            --text-secondary: #8899a6;
-            --danger: #ff4444;
-            --success: #00c851;
         }
 
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f2e 100%);
             color: var(--text-primary);
             min-height: 100vh;
@@ -34,55 +29,39 @@
             padding: 20px;
         }
 
-        .container {
+        .auth-container {
+            width: 100%;
+            max-width: 400px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-title {
             text-align: center;
-            max-width: 500px;
-        }
-
-        .logo {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-
-        h1 {
-            font-size: 2.5em;
+            font-size: 2em;
             margin-bottom: 10px;
-            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            background: linear-gradient(135deg, var(--accent-primary) 0%, #0099ff 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .subtitle {
-            font-size: 1.2em;
-            color: var(--text-secondary);
-            margin-bottom: 40px;
-        }
-
-        .auth-container {
-            background: var(--bg-secondary);
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .auth-subtitle {
+            text-align: center;
+            color: #8899a6;
+            margin-bottom: 30px;
         }
 
         .form-group {
             margin-bottom: 20px;
-            text-align: left;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: var(--text-secondary);
         }
 
         .form-input {
             width: 100%;
-            padding: 12px 16px;
-            background: var(--bg-tertiary);
-            border: 2px solid transparent;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
             border-radius: 8px;
             color: var(--text-primary);
             font-size: 1em;
@@ -95,210 +74,117 @@
 
         .auth-button {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            padding: 15px;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, #0099ff 100%);
             border: none;
             border-radius: 8px;
             color: white;
-            font-size: 1.1em;
+            font-size: 1em;
             font-weight: 600;
             cursor: pointer;
-            margin-bottom: 20px;
+            transition: transform 0.2s;
         }
 
         .auth-button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 212, 170, 0.3);
         }
 
-        .switch-mode {
+        .auth-switch {
             text-align: center;
-            color: var(--text-secondary);
+            margin-top: 20px;
         }
 
-        .switch-mode a {
+        .auth-switch a {
             color: var(--accent-primary);
             text-decoration: none;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .error-message {
-            color: var(--danger);
-            margin-top: 10px;
-            display: none;
-        }
-
-        .features {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 30px;
-        }
-
-        .feature {
-            background: var(--bg-secondary);
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-        }
-
-        .feature-icon {
-            font-size: 1.5em;
-            margin-bottom: 8px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">💬</div>
-        <h1>NoknowGram</h1>
-        <p class="subtitle">Простой и быстрый мессенджер</p>
+    <div class="auth-container">
+        <h1 class="auth-title">NoknowGram</h1>
+        <p class="auth-subtitle">Безопасные видеозвонки и чат</p>
         
-        <div class="auth-container">
-            <form id="authForm">
-                <div class="form-group">
-                    <label class="form-label">Имя пользователя</label>
-                    <input type="text" class="form-input" id="username" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Пароль</label>
-                    <input type="password" class="form-input" id="password" required>
-                </div>
-                
-                <button type="submit" class="auth-button" id="submitBtn">Войти</button>
-                <div class="switch-mode">
-                    Нет аккаунта? <a id="switchBtn">Зарегистрироваться</a>
-                </div>
-                <div class="error-message" id="errorMessage"></div>
-            </form>
-        </div>
+        <form id="loginForm">
+            <div class="form-group">
+                <input type="text" class="form-input" id="username" placeholder="Имя пользователя" required>
+            </div>
+            <div class="form-group">
+                <input type="password" class="form-input" id="password" placeholder="Пароль" required>
+            </div>
+            <button type="submit" class="auth-button">Войти</button>
+        </form>
 
-        <div class="features">
-            <div class="feature">
-                <div class="feature-icon">⚡</div>
-                <div>Быстрый</div>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">🔒</div>
-                <div>Безопасный</div>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">👥</div>
-                <div>Групповые чаты</div>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">📁</div>
-                <div>Обмен файлами</div>
-            </div>
+        <div class="auth-switch">
+            Нет аккаунта? <a href="#" id="registerLink">Зарегистрироваться</a>
         </div>
     </div>
 
     <script>
-        class AuthApp {
-            constructor() {
-                this.isLogin = true;
-                this.init();
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                alert('Заполните все поля');
+                return;
             }
 
-            init() {
-                this.setupElements();
-                this.bindEvents();
-                this.updateUI();
-            }
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
 
-            setupElements() {
-                this.authForm = document.getElementById('authForm');
-                this.username = document.getElementById('username');
-                this.password = document.getElementById('password');
-                this.submitBtn = document.getElementById('submitBtn');
-                this.switchBtn = document.getElementById('switchBtn');
-                this.errorMessage = document.getElementById('errorMessage');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Сохраняем пользователя
+                    localStorage.setItem('currentUser', JSON.stringify({ username }));
+                    // Переходим в чат
+                    window.location.href = '/chat.html';
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
             }
+        });
 
-            bindEvents() {
-                this.authForm.addEventListener('submit', (e) => this.handleSubmit(e));
-                this.switchBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.toggleMode();
+        document.getElementById('registerLink').addEventListener('click', (e) => {
+            e.preventDefault();
+            const username = prompt('Введите имя пользователя:');
+            const password = prompt('Введите пароль:');
+            
+            if (username && password) {
+                fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Аккаунт создан! Теперь войдите.');
+                    } else {
+                        alert(data.message);
+                    }
                 });
             }
-
-            toggleMode() {
-                this.isLogin = !this.isLogin;
-                this.updateUI();
-            }
-
-            updateUI() {
-                if (this.isLogin) {
-                    this.submitBtn.textContent = 'Войти';
-                    this.switchBtn.textContent = 'Зарегистрироваться';
-                } else {
-                    this.submitBtn.textContent = 'Зарегистрироваться';
-                    this.switchBtn.textContent = 'Войти';
-                }
-                this.hideError();
-            }
-
-            async handleSubmit(e) {
-                e.preventDefault();
-                
-                const username = this.username.value.trim();
-                const password = this.password.value;
-
-                if (!username || !password) {
-                    this.showError('Заполните все поля');
-                    return;
-                }
-
-                this.setLoading(true);
-
-                try {
-                    const endpoint = this.isLogin ? '/api/login' : '/api/register';
-                    const response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ username, password })
-                    });
-
-                    const data = await response.json();
-
-                    if (data.success) {
-                        // Сохраняем пользователя и переходим в чат
-                        localStorage.setItem('currentUser', JSON.stringify({ username }));
-                        window.location.href = '/chat.html';
-                    } else {
-                        this.showError(data.message);
-                    }
-                } catch (error) {
-                    this.showError('Ошибка соединения с сервером');
-                } finally {
-                    this.setLoading(false);
-                }
-            }
-
-            setLoading(loading) {
-                this.submitBtn.disabled = loading;
-                this.submitBtn.textContent = loading ? 'Загрузка...' : 
-                    (this.isLogin ? 'Войти' : 'Зарегистрироваться');
-            }
-
-            showError(message) {
-                this.errorMessage.textContent = message;
-                this.errorMessage.style.display = 'block';
-            }
-
-            hideError() {
-                this.errorMessage.style.display = 'none';
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            new AuthApp();
         });
+
+        // Автовход если уже авторизован
+        const currentUser = localStorage.getItem('currentUser');
+        if (currentUser) {
+            window.location.href = '/chat.html';
+        }
     </script>
 </body>
 </html>
